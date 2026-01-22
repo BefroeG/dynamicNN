@@ -1,5 +1,5 @@
 # 忽略目录
-/dynamic NN/          # 忽略根目录下的target文件夹
+     # 忽略根目录下的target文件夹
 /x64/         # 忽略所有node_modules文件夹
 
 # 忽略文件类型

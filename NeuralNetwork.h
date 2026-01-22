@@ -16,6 +16,8 @@ enum class OptimizerType : int {
     ADAM  // Adam自适应优化器
 };
 
+constexpr static double EPS = 1e-8;               // 防止除零的小值
+
 // 网络层结构体（包含权重、偏置、激活函数、梯度及批归一化/ADAM参数）
 struct Layer {
     Matrix weight;        // 权重矩阵 [output_size, input_size]
@@ -106,6 +108,8 @@ private:
     double lr_decay_rate = 0.995;// 学习率衰减率（每轮衰减0.5%）
     int lr_decay_step = 100;    // 学习率衰减步长
 
+    std::vector<double> lossVector; //损失函数图像
+
     // 反标准化函数
     double inverseStandardizeY(double normalizedY) const { return normalizedY * y_std + y_mean; }
     double inverseStandardizeX(double normalizedX) const { return normalizedX * x_std + x_mean; }
@@ -164,7 +168,10 @@ public:
     void monitorNeuronDeath();
 
     // 控制台可视化拟合结果
-    void plot_function(bool ptrue = true, int width = 200, int height = 200);
+    void plot_function(bool ptrue = true, int width = 100, int height = 80);
+
+    // 在坐标图中打印预测点和真实数据点
+    void plotLossCurve(int plotHeight = 50, int precision = 4);
 };
 
 #endif // NEURALNETWORK_H

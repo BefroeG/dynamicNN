@@ -501,8 +501,11 @@ void NeuralNetwork::train(size_t epochs, size_t batch_size) {
         // 计算平均损失
         epoch_loss /= n_samples;
 
+        if (epoch % 25 == 0 || epoch == epochs - 1)
+            lossVector.push_back(epoch_loss);//记录每轮的损失
+
         // 打印训练信息
-        if (epoch % 999 == 0) {
+        if (epoch % 500 == 0 || epoch == epochs - 1) {
             std::cout << "Epoch " << epoch << "，均方误差=" << std::fixed << std::setprecision(6) << epoch_loss
                 << "，当前学习率=" << current_lr << std::endl;
         }
@@ -659,7 +662,7 @@ void NeuralNetwork::plot_function(bool isPlotTarget, int width, int height) {
     // 打印画布
     std::cout << "\n函数拟合可视化 (宽度=" << width << ", 高度=" << height << "):" << std::endl << std::endl;
     std::cout << std::string((width / 2 - 21 >= 1 ? (width / 2 - 21) : 1), ' ')
-        << "\033[31m+ 真实数据点\033[0m   \033[32m* 预测数据点\033[0m   \033[33m# 重合数据点\033[0m"
+        << "\033[32m+ 真实数据点\033[0m   \033[31m* 预测数据点\033[0m   \033[33m# 重合数据点\033[0m"
         << std::endl << std::endl;
 
     for (int row = 0; row < height; ++row) {
@@ -684,4 +687,89 @@ void NeuralNetwork::plot_function(bool isPlotTarget, int width, int height) {
 
     std::cout << "X范围: [" << x_min << ", " << x_max << "]" << std::endl;
     std::cout << "Y范围: [" << y_min << ", " << y_max << "]" << std::endl;
+}
+
+// 绘制损失函数控制台图像的函数
+void NeuralNetwork::plotLossCurve(int plotHeight, int precision) {
+    // 1. 边界情况处理
+    if (lossVector.empty()) {
+        std::cout << "错误：损失值vector为空，无法绘制图像！" << std::endl;
+        return;
+    }
+    if (lossVector.size() == 1) {
+        std::cout << "损失值vector仅包含1个元素：" << lossVector[0] << std::endl;
+        return;
+    }
+
+    // 2. 获取损失值的最大值和最小值（兼容C++11/14）
+    std::pair<std::vector<double>::const_iterator, std::vector<double>::const_iterator> lossMinMax =
+        std::minmax_element(lossVector.begin(), lossVector.end());
+    double lossMin = *lossMinMax.first;
+    double lossMax = *lossMinMax.second;
+    double lossRange = lossMax - lossMin;
+
+    // 处理所有损失值相同的情况（避免除以0）
+    if (lossRange < 1e-9) {
+        lossRange = 1.0;
+        lossMin -= 0.5;
+        lossMax += 0.5;
+    }
+
+    // 3. 定义图像宽度（列数 = 损失值数量）
+    int plotWidth = static_cast<int>(lossVector.size());
+
+    // 4. 绘制图像主体（逐行绘制）
+    std::cout << "\n===== 损失函数变化曲线 =====" << std::endl;
+    for (int row = 0; row < plotHeight; ++row) {
+        // 计算当前行对应的损失值
+        double currentValue = lossMax - (static_cast<double>(row) / (plotHeight - 1)) * lossRange;
+
+        // 输出左侧数值刻度（右对齐，固定宽度，统一8位）
+        std::cout << std::fixed << std::setprecision(precision) << std::setw(8) << currentValue << " | ";
+
+        // 逐列绘制损失值标记
+        for (int col = 0; col < plotWidth; ++col) {
+            int mappedRow = static_cast<int>((lossMax - lossVector[col]) / lossRange * (plotHeight - 1));
+            // 允许1行的误差（避免浮点精度导致标记消失）
+            if (abs(mappedRow - row) <= 0) {
+                std::cout << "\033[33m*\033[0m";//"\033[33m#\033[0m"
+            }
+            else {
+                std::cout << " ";
+            }
+        }
+        std::cout << std::endl;
+    }
+
+    // 5. 绘制底部分隔线（长度严格匹配图像主体宽度）
+    std::cout << "          +" << std::string(plotWidth, '-') << std::endl;
+
+    // 6. 绘制迭代次数刻度（优化对齐，避免“差一块”）
+    std::cout << "迭代次数： ";
+    // 重新计算刻度步长，确保刻度均匀且不重叠
+    int maxTickNum = 10;  // 最多显示10个刻度
+    int tickStep = std::max(1, plotWidth / maxTickNum);
+
+    // 先初始化刻度行的所有字符为空格
+    std::string tickLine(plotWidth, ' ');
+    for (int col = 0; col < plotWidth; col += tickStep) {
+        // 把迭代次数转为字符串，填充到刻度行
+        std::string tickStr = std::to_string(col * 25);
+        // 确保刻度不超出图像宽度
+        if (col + tickStr.size() <= plotWidth) {
+            for (int i = 0; i < tickStr.size(); ++i) {
+                tickLine[col + i] = tickStr[i];
+            }
+        }
+        else {
+            // 最后一个刻度如果超出，只显示最后几位
+            int start = plotWidth - tickStr.size();
+            start = std::max(start, 0);
+            for (int i = 0; i < tickStr.size() && start + i < plotWidth; ++i) {
+                tickLine[start + i] = tickStr[i];
+            }
+        }
+    }
+    // 输出刻度行
+    std::cout << tickLine << std::endl;
 }

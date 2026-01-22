@@ -325,8 +325,13 @@ void Matrix::print() const {
     }
     for (int i = 0; i < rows; ++i) {
         for (int j = 0; j < cols; ++j) {
-            std::cout << std::fixed << std::setw(10) << std::setprecision(6) << data_[i * cols + j] << " ";
+            std::cout << std::fixed << std::setw(10) << std::setprecision(6) << data_[i * cols + j] ;
+            if (j!= cols-1) {
+                std::cout << " | ";
+            }
         }
-        std::cout << std::endl;
+        if (i != rows - 1 || rows > 1) {
+            std::cout << std::endl;
+        }
     }
 }

@@ -145,7 +145,7 @@ void NeuralNetwork::initLayers(const std::vector<int>& hidden_layers) {
 
 // 打印网络结构
 void NeuralNetwork::printNet() const {
-    std::cout << "=================== 网络结构 ===================" << std::endl;
+    std::cout << std::string(46, '=') << " 网络结构 " << std::string(46, '=') << std::endl << std::endl;
     int input_dim = 1;
     for (size_t i = 0; i < layers.size(); ++i) {
         const Layer& layer = layers[i];
@@ -160,17 +160,18 @@ void NeuralNetwork::printNet() const {
         input_dim = layer.weight.getRows();
 
         // 打印层参数
-        std::cout << "weight:\n";layer.weight.print();
+        std::cout << "\nweight:\n\n";layer.weight.print();std::cout << std::endl;
         if (!layer.use_batch_norm) {
-            std::cout << "bias: [ ";layer.bias.transpose().print();
+            std::cout << "\nbias: [ ";layer.bias.transpose().print();std::cout << " ]\n\n";
         }
         else {
-            std::cout << "gamma: [ ";layer.gamma.transpose().print();
-            std::cout << "beta:  [ ";layer.beta.transpose().print();
+            std::cout << "\ngamma: [ ";layer.gamma.transpose().print();std::cout << " ]\n\n";
+            std::cout << "\nbeta:  [ ";layer.beta.transpose().print();std::cout << " ]\n\n";
         }
-        std::cout << std::string(60, '-') << std::endl << std::endl;
+        if(i != layers.size()-1)
+            std::cout << std::string(102, '-') << std::endl << std::endl;
     }
-    std::cout << "===============================================" << std::endl;
+    std::cout << std::string(102, '=') << std::endl << std::endl;
 }
 
 // 批归一化前向传播
@@ -566,6 +567,7 @@ void NeuralNetwork::monitorNeuronDeath() {
 
 // 控制台可视化拟合结果
 void NeuralNetwork::plot_function(bool isPlotTarget, int width, int height) {
+    std::cout << std::endl << std::string(45, '=') << " 函数拟合曲线 " << std::string(45, '=') << std::endl << std::endl;
     is_training = false;
     size_t size = true_points.size();
     Matrix pred_output = forward(norm_input);
@@ -719,7 +721,7 @@ void NeuralNetwork::plotLossCurve(int plotHeight, int precision) {
     int plotWidth = static_cast<int>(lossVector.size());
 
     // 4. 绘制图像主体（逐行绘制）
-    std::cout << "\n===== 损失函数变化曲线 =====" << std::endl;
+    std::cout << std::string(42, '=') << " 损失函数变化曲线 " << std::string(42, '=') << std::endl << std::endl;
     for (int row = 0; row < plotHeight; ++row) {
         // 计算当前行对应的损失值
         double currentValue = lossMax - (static_cast<double>(row) / (plotHeight - 1)) * lossRange;

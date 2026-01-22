@@ -3,6 +3,8 @@
 
 #include "Matrix.h"
 #include <vector>
+#include <random> 
+#include <chrono> 
 
 // 激活函数类型（底层int避免类型歧义）
 enum class ActivationType : int {
@@ -47,7 +49,7 @@ struct Layer {
     Matrix running_mean;  // 移动平均均值
     Matrix running_var;   // 移动平均方差
     double momentum = 0.9;// 移动平均动量
-    double eps = 1e-5;    // 防止除零的小值
+
     // 批归一化中间变量（反向传播用）
     Matrix z_norm;        // 归一化后的z
     Matrix z_hat;         // 标准化后的z（未缩放偏移）
@@ -77,6 +79,19 @@ struct Layer {
         std(_w.getRows(), 1),
         inv_std(_w.getRows(), 1)
     {
+        // 创建随机数引擎（mt19937 是性能和随机性都很好的梅森旋转算法）
+        std::mt19937 generator(std::chrono::system_clock::now().time_since_epoch().count());
+
+        std::uniform_real_distribution<double> gamma_dist(0.9, 1.1);// gamma范围 (0.9, 1.1)
+        std::uniform_real_distribution<double> beta_dist(-0.1, 0.1);//beta范围 (-0.1,0.1)
+        // 4. 生成0到1之间的随机数
+        for (int i = 0; i < gamma.getRows();++i) {
+            beta(i, 0) = beta_dist(generator);
+            gamma(i, 0) = gamma_dist(generator);
+
+            //gamma(i, 0) = 1; // TODO
+            //beta(i, 0) = 0;  // TODO
+        }
     }
 };
 
@@ -101,11 +116,10 @@ private:
     // ADAM优化器超参数
     double beta1 = 0.9;         // 一阶矩衰减系数
     double beta2 = 0.999;       // 二阶矩衰减系数
-    double epsilon = 1e-8;      // 防止除零的小值
     int adam_step = 0;          // ADAM迭代步数（偏差校正用）
 
     // 学习率衰减参数
-    double lr_decay_rate = 0.995;// 学习率衰减率（每轮衰减0.5%）
+    double lr_decay_rate = 1;// 学习率衰减率（每轮衰减0.5%）0.995
     int lr_decay_step = 100;    // 学习率衰减步长
 
     std::vector<double> lossVector; //损失函数图像

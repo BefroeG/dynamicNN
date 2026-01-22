@@ -80,8 +80,8 @@ void NeuralNetwork::standardizeData() {
     y_std = std::sqrt((y_sq_sum / n) - (y_mean * y_mean));
 
     // 避免标准差为0
-    if (x_std < 1e-8) x_std += 1e-8;
-    if (y_std < 1e-8) y_std += 1e-8;
+    if (x_std < EPS) x_std += EPS;
+    if (y_std < EPS) y_std += EPS;
 
     // 标准化后存入矩阵
     norm_input = Matrix(n, 1);
@@ -183,8 +183,8 @@ Matrix NeuralNetwork::batchNormForward(const Matrix& z, Layer& layer) {
         Matrix mean_broadcast = layer.running_mean.broadcastRows(batch_size);
         Matrix inv_std_broadcast = layer.inv_std.broadcastRows(batch_size);
         Matrix z_hat = (z - mean_broadcast).hadamard(inv_std_broadcast);
-        Matrix gamma_broadcast = layer.gamma.broadcastRows(batch_size);
-        Matrix beta_broadcast = layer.beta.broadcastRows(batch_size);
+        Matrix gamma_broadcast = layer.gamma.transpose().broadcastRows(batch_size);
+        Matrix beta_broadcast = layer.beta.transpose().broadcastRows(batch_size);
         Matrix z_norm = z_hat.hadamard(gamma_broadcast) + beta_broadcast;
         return z_norm;
     }
@@ -213,7 +213,7 @@ Matrix NeuralNetwork::batchNormForward(const Matrix& z, Layer& layer) {
     layer.running_var = layer.running_var * layer.momentum + var * (1 - layer.momentum);
 
     // 标准化（防止除零）
-    Matrix std = var.apply([this, &layer](double x) { return sqrt(x + layer.eps); });
+    Matrix std = var.apply([this, &layer](double x) { return sqrt(x + EPS); });
     Matrix inv_std = std.apply([](double x) { return 1.0 / x; });
     Matrix z_hat = (z - mean.broadcastRows(batch_size)).hadamard(inv_std.broadcastRows(batch_size));
 
@@ -373,7 +373,7 @@ void NeuralNetwork::updateParameters() {
 
             // 更新权重
             Matrix weight_update = m_weight_corrected.hadamard(
-                (v_weight_corrected.apply([](double x) { return sqrt(x); }) + epsilon).apply([](double x) { return 1.0 / x; })
+                (v_weight_corrected.apply([](double x) { return sqrt(x); }) + EPS).apply([](double x) { return 1.0 / x; })
             );
             layer.weight = layer.weight - weight_update * current_lr;
 
@@ -387,7 +387,7 @@ void NeuralNetwork::updateParameters() {
 
             // 更新偏置
             Matrix bias_update = m_bias_corrected.hadamard(
-                (v_bias_corrected.apply([](double x) { return sqrt(x); }) + epsilon).apply([](double x) { return 1.0 / x; })
+                (v_bias_corrected.apply([](double x) { return sqrt(x); }) + EPS).apply([](double x) { return 1.0 / x; })
             );
             layer.bias = layer.bias - bias_update * current_lr;
 
@@ -401,7 +401,7 @@ void NeuralNetwork::updateParameters() {
                 Matrix m_gamma_corrected = m_gamma * m_correction;
                 Matrix v_gamma_corrected = v_gamma * v_correction;
                 Matrix gamma_update = m_gamma_corrected.hadamard(
-                    (v_gamma_corrected.apply([](double x) { return sqrt(x); }) + epsilon).apply([](double x) { return 1.0 / x; })
+                    (v_gamma_corrected.apply([](double x) { return sqrt(x); }) + EPS).apply([](double x) { return 1.0 / x; })
                 );
                 layer.gamma = layer.gamma - gamma_update * current_lr;
 
@@ -413,7 +413,7 @@ void NeuralNetwork::updateParameters() {
                 Matrix m_beta_corrected = m_beta * m_correction;
                 Matrix v_beta_corrected = v_beta * v_correction;
                 Matrix beta_update = m_beta_corrected.hadamard(
-                    (v_beta_corrected.apply([](double x) { return sqrt(x); }) + epsilon).apply([](double x) { return 1.0 / x; })
+                    (v_beta_corrected.apply([](double x) { return sqrt(x); }) + EPS).apply([](double x) { return 1.0 / x; })
                 );
                 layer.beta = layer.beta - beta_update * current_lr;
             }

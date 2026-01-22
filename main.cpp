@@ -49,7 +49,7 @@ int main() {
         nn.standardizeData();
 
         // 4. 初始化网络层（{隐藏层维度}, 批归一化开关：true/false）
-        nn.initLayers(hidden_layers, false);
+        nn.initLayers(hidden_layers, true);
 
         // 打印网络结构（可选，用于验证配置）
         nn.printNet();

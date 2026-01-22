@@ -554,14 +554,14 @@ void NeuralNetwork::monitorNeuronDeath() {
             std::cout << "Òþ²Ø²ã " << l + 1 << " (RELU): ËÀÍöÉñ¾­Ôª = " << dead_neurons << "/" << total_neurons
                 << " (" << std::fixed << std::setprecision(1) << death_ratio * 100 << "%)" << std::endl;
         }
-        if (death_ratio == 1.0) {
-            std::cout << std::string(30, '=') << " batch_input " << std::string(30, '=') << std::endl;
-            layer.batch_input.print();
-            std::cout << std::string(30, '=') << " batch_z " << std::string(30, '=') << std::endl;
-            layer.z.print();
-            std::cout << std::string(30, '=') << " batch_a " << std::string(30, '=') << std::endl;
-            layer.a.print();
-        }
+        //if (death_ratio == 1.0) {
+        //    std::cout << std::string(30, '=') << " batch_input " << std::string(30, '=') << std::endl;
+        //    layer.batch_input.print();
+        //    std::cout << std::string(30, '=') << " batch_z " << std::string(30, '=') << std::endl;
+        //    layer.z.print();
+        //    std::cout << std::string(30, '=') << " batch_a " << std::string(30, '=') << std::endl;
+        //    layer.a.print();
+        //}
     }
 }
 

@@ -34,9 +34,7 @@
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
-    <Text Include="data.txt" />
-    <Text Include="polynomial_data.txt" />
-    <Text Include="complex_function_data.txt" />
+    <Text Include="complex_function_data" />
   </ItemGroup>
   <ItemGroup>
     <None Include="X^2" />

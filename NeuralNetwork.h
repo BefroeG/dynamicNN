@@ -56,6 +56,11 @@ struct Layer {
     Matrix std;           // 批次标准差
     Matrix inv_std;       // 标准差的倒数
 
+    Matrix _weight;        // 原始权重矩阵 [output_size, input_size]
+    Matrix _bias;          // 原始偏置矩阵 [output_size, 1]
+    Matrix _gamma;         // 原始缩放参数 γ (output_size, 1)
+    Matrix _beta;          // 原始偏移参数 β (output_size, 1)
+
     // 层构造函数
     Layer(Matrix _w, Matrix _b, ActivationType _a, bool _use_bn = false)
         : weight(_w), bias(_b), activation(_a),
@@ -120,6 +125,7 @@ private:
     // 学习率衰减参数
     double lr_decay_rate = 0.995;// 学习率衰减率（每轮衰减0.5%）0.995
     int lr_decay_step = 100;    // 学习率衰减步长
+    double bn_lr_rate = 0.01;     //批归一化参数学习率衰减
 
     std::vector<double> lossVector; //损失函数图像
 
@@ -138,6 +144,9 @@ private:
 
     // 批归一化反向传播
     Matrix batchNormBackward(const Matrix& dz_norm, Layer& layer);
+
+    // 记录网络原始参数
+    void recordOriginalParameters();
 
 public:
     // 构造函数（仅学习率+优化器，移除批归一化全局控制）
@@ -171,9 +180,15 @@ public:
 
     // 更新网络参数
     void updateParameters();
+    
+    // BN梯度裁剪
+    void clipBNGradients(double max_norm = 0.1);
 
     // 重置梯度参数
     void resetParameters();
+
+    // 打印最终参数比对
+    void printTrainedNet();
 
     // 预测单输入值
     double predict(double x);

@@ -132,7 +132,7 @@ void NeuralNetwork::initLayers(const std::vector<int>& hidden_layers, bool use_b
             out_w(i, j) = w_dist(gen) * std_dev_xavier;
         }
     }
-    out_b(0, 0) = 0.0;
+    out_b(0, 0) = b_dist(gen);
     // 输出层禁用批归一化
     layers.emplace_back(out_w, out_b, ActivationType::LINEAR, false);
     std::cout << ">>>> 网络层初始化完成" << std::endl;
@@ -142,6 +142,7 @@ void NeuralNetwork::initLayers(const std::vector<int>& hidden_layers, bool use_b
 void NeuralNetwork::printNet() const {
     std::cout << std::string(46, '=') << " 网络结构 " << std::string(46, '=') << std::endl << std::endl;
     int input_dim = 1;
+    std::cout << std::fixed << std::right;
     for (size_t i = 0; i < layers.size(); ++i) {
         const Layer& layer = layers[i];
         std::string act_type = (layer.activation == ActivationType::LINEAR) ? "LINEAR" : "RELU";
@@ -341,6 +342,7 @@ void NeuralNetwork::backward(const Matrix& epoch_target, const Matrix& epoch_out
 
 // 更新网络参数
 void NeuralNetwork::updateParameters() {
+    clipBNGradients();//裁剪BN的梯度
     if (opt == OptimizerType::BGD) {
         // 批量梯度下降更新
         for (Layer& layer : layers) {
@@ -349,8 +351,8 @@ void NeuralNetwork::updateParameters() {
 
             // 更新批归一化参数
             if (layer.use_batch_norm) {
-                layer.gamma = layer.gamma - layer.d_gamma * current_lr;
-                layer.beta = layer.beta - layer.d_beta * current_lr;
+                layer.gamma = layer.gamma - layer.d_gamma * current_lr * bn_lr_rate;
+                layer.beta = layer.beta - layer.d_beta * current_lr * bn_lr_rate;
             }
         }
     }
@@ -404,7 +406,7 @@ void NeuralNetwork::updateParameters() {
                 Matrix gamma_update = m_gamma_corrected.hadamard(
                     (v_gamma_corrected.apply([](double x) { return sqrt(x); }) + EPS).apply([](double x) { return 1.0 / x; })
                 );
-                layer.gamma = layer.gamma - gamma_update * current_lr;
+                layer.gamma = layer.gamma - gamma_update * current_lr * bn_lr_rate;
 
                 // 更新β
                 Matrix m_beta = layer.m_bias;
@@ -416,11 +418,36 @@ void NeuralNetwork::updateParameters() {
                 Matrix beta_update = m_beta_corrected.hadamard(
                     (v_beta_corrected.apply([](double x) { return sqrt(x); }) + EPS).apply([](double x) { return 1.0 / x; })
                 );
-                layer.beta = layer.beta - beta_update * current_lr;
+                layer.beta = layer.beta - beta_update * current_lr * bn_lr_rate;
             }
         }
     }
-    resetParameters();
+    resetParameters();//重置所有梯度
+}
+
+// BN梯度裁剪
+void NeuralNetwork::clipBNGradients(double max_norm) {
+
+    for (auto& layer : layers) {
+        double layer_grad_norm = 0.0;
+
+        // 批归一化参数梯度
+        if (layer.use_batch_norm) {
+            for (int i = 0; i < layer.d_gamma.getRows(); ++i) {
+                layer_grad_norm += layer.d_gamma(i, 0) * layer.d_gamma(i, 0);
+                layer_grad_norm += layer.d_beta(i, 0) * layer.d_beta(i, 0);
+            }
+            layer_grad_norm = std::sqrt(layer_grad_norm);
+
+            // 逐层裁剪
+            double scale = 1;
+            if (layer_grad_norm > max_norm) {
+                scale = max_norm / layer_grad_norm;
+            }
+            layer.d_gamma = layer.d_gamma * scale;
+            layer.d_beta = layer.d_beta * scale;
+        }
+    }
 }
 
 // 重置梯度参数
@@ -446,6 +473,7 @@ void NeuralNetwork::preTrain() {
         forward(norm_input, true);
         if (checkNeuronDeath(reset_death_ratio)) {
             // 清空所有层的中间数据 TODO
+            recordOriginalParameters();
             std::cout << ">>>> 预训练完成: 训练次数 = (" << i + 1 << " / " << max_training_limit << ")\n" << std::endl;  
             return;
         }
@@ -475,6 +503,7 @@ void NeuralNetwork::preTrain() {
             }
         }
     }
+    recordOriginalParameters();
     std::cout << ">>>> 预训练完成: 训练次数 = (" << max_training_limit << " / " << max_training_limit << ")\n" << std::endl;
 }
 
@@ -491,8 +520,6 @@ void NeuralNetwork::train(size_t epochs, size_t batch_size) {
     }
     is_training = true;
 
-    preTrain(); // 预训练
-    printNet(); //打印网络结构
     // 记录开始时间
     auto start = std::chrono::high_resolution_clock::now();
 
@@ -569,6 +596,102 @@ void NeuralNetwork::train(size_t epochs, size_t batch_size) {
     auto duration = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start);
     std::cout << "\n>>>> 训练完毕: 耗时= " << duration.count() / 1000000000 << " (秒) | 最终损失= "
         << std::fixed << std::setprecision(6) << final_delta << std::endl << std::endl;
+}
+
+// 记录网络原始参数
+void NeuralNetwork::recordOriginalParameters() {
+    for (Layer& layer : layers) {
+        layer._weight = layer.weight;
+        layer._bias = layer.bias;
+        if (layer.use_batch_norm) {
+            layer._gamma = layer.gamma;
+            layer._beta = layer.beta;
+        }
+    }
+}
+
+// 打印最终参数比对
+void NeuralNetwork::printTrainedNet() {
+    std::cout << std::string(42, '=') << " 训练结束网络结构 " << std::string(42, '=') << std::endl << std::endl;
+    int input_dim = 1;
+    for (size_t i = 0; i < layers.size(); ++i) {
+        const Layer& layer = layers[i];
+        std::string act_type = (layer.activation == ActivationType::LINEAR) ? "LINEAR" : "RELU";
+        std::cout << "第" << i + 1 << "层：输入维度=" << input_dim
+            << ", 输出维度=" << layer.weight.getRows()
+            << ", 激活函数=" << act_type
+            << ", 权重形状=(" << layer.weight.getRows() << "," << layer.weight.getCols() << ")"
+            << ", 偏置形状=(" << layer.bias.getRows() << "," << layer.bias.getCols() << ")"
+            << ", 批归一化=" << (layer.use_batch_norm ? "启用" : "禁用")
+            << std::endl;
+        input_dim = layer.weight.getRows();
+        std::cout << std::fixed << std::right;
+        // 打印层参数
+        std::cout << "\nweight:\n";
+        Matrix w = layer.weight;
+        Matrix _w = layer._weight;
+        for (int i = 0; i < w.getRows(); ++i) {
+            for (int j = 0; j < w.getCols(); ++j) {
+                std::cout << std::setw(10) << std::setprecision(6) << w(i,j)
+                    << " (" << std::setw(5) << std::setprecision(2)
+                    << (w(i, j) - _w(i, j))/(_w(i, j)+EPS) << "%)";
+                if (j != w.getCols() - 1) {
+                    std::cout << " | ";
+                }
+            }
+            if (i != w.getRows() - 1 || w.getRows() > 1) {
+                std::cout << std::endl;
+            }
+        }
+        if(w.getRows() == 1) std::cout << std::endl;
+       
+        if (!layer.use_batch_norm) {
+            std::cout << "bias: [ ";
+            Matrix b = layer.bias.transpose();
+            Matrix _b = layer._bias.transpose();
+            for (int i = 0; i < b.getCols(); ++i) {
+                 std::cout << std::setw(10) << std::setprecision(6) << b(0, i)
+                     << " (" << std::setw(5) << std::setprecision(2)
+                      << (b(0, i) - _b(0, i)) / (_b(0, i) + EPS) << "%)";
+                if (i != b.getCols() - 1) {
+                    std::cout << " | ";
+                }
+            }
+            std::cout << " ]\n";
+
+        }
+        else {
+            std::cout << "gamma: [ ";
+            Matrix g = layer.gamma.transpose();
+            Matrix _g = layer._gamma.transpose();
+            for (int i = 0; i < g.getCols(); ++i) {
+                std::cout << std::setw(10) << std::setprecision(6) << g(0, i)
+                    << " (" << std::setw(5) << std::setprecision(2)
+                    << (g(0, i) - _g(0, i)) / (_g(0, i) + EPS) << "%)";
+                if (i != g.getCols() - 1) {
+                    std::cout << " | ";
+                }
+            }
+            std::cout << " ]\n";
+
+            std::cout << "beta:  [ ";
+            Matrix b = layer.beta.transpose();
+            Matrix _b = layer._beta.transpose();
+            for (int i = 0; i < b.getCols(); ++i) {
+                std::cout << std::setw(10) << std::setprecision(6) << b(0, i)
+                    << " (" << std::setw(5) << std::setprecision(2)
+                    << (b(0, i) - _b(0, i)) / (_b(0, i)+EPS) << "%)";
+                if (i != b.getCols() - 1) {
+                    std::cout << " | ";
+                }
+            }
+            std::cout << " ]\n";
+
+        }
+        if (i != layers.size() - 1)
+            std::cout << std::string(102, '-') << std::endl << std::endl;
+    }
+    std::cout << std::string(102, '=') << std::endl << std::endl;
 }
 
 // 预测单值

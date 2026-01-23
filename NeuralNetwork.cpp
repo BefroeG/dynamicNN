@@ -176,9 +176,13 @@ Matrix NeuralNetwork::batchNormForward(const Matrix& z, Layer& layer) {
     int feat_size = z.getCols();
 
     if (!is_training) {
-        // 推理阶段：使用移动平均的均值和方差
+        // 推理阶段：使用移动平均的均值和方差（修复核心）
         Matrix mean_broadcast = layer.running_mean.broadcastRows(batch_size);
-        Matrix inv_std_broadcast = layer.inv_std.broadcastRows(batch_size);
+        // 重新计算running_var的inv_std（关键修复）
+        Matrix std_running = layer.running_var.apply([this](double x) { return sqrt(x + EPS); });
+        Matrix inv_std_running = std_running.apply([](double x) { return 1.0 / x; });
+        Matrix inv_std_broadcast = inv_std_running.broadcastRows(batch_size);
+
         Matrix z_hat = (z - mean_broadcast).hadamard(inv_std_broadcast);
         Matrix gamma_broadcast = layer.gamma.transpose().broadcastRows(batch_size);
         Matrix beta_broadcast = layer.beta.transpose().broadcastRows(batch_size);

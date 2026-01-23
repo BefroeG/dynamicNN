@@ -120,6 +120,7 @@ private:
     // 学习率衰减参数
     double lr_decay_rate = 0.995;// 学习率衰减率（每轮衰减0.5%）0.995
     int lr_decay_step = 100;    // 学习率衰减步长
+    double bn_lr_rate = 0.1;     //批归一化参数学习率衰减
 
     std::vector<double> lossVector; //损失函数图像
 
@@ -171,6 +172,9 @@ public:
 
     // 更新网络参数
     void updateParameters();
+    
+    // BN梯度裁剪
+    void clipBNGradients(double max_norm = 0.1);
 
     // 重置梯度参数
     void resetParameters();

@@ -337,6 +337,7 @@ void NeuralNetwork::backward(const Matrix& epoch_target, const Matrix& epoch_out
 
 // 更新网络参数
 void NeuralNetwork::updateParameters() {
+    clipBNGradients();//裁剪BN的梯度
     if (opt == OptimizerType::BGD) {
         // 批量梯度下降更新
         for (Layer& layer : layers) {
@@ -345,8 +346,8 @@ void NeuralNetwork::updateParameters() {
 
             // 更新批归一化参数
             if (layer.use_batch_norm) {
-                layer.gamma = layer.gamma - layer.d_gamma * current_lr;
-                layer.beta = layer.beta - layer.d_beta * current_lr;
+                layer.gamma = layer.gamma - layer.d_gamma * current_lr * bn_lr_rate;
+                layer.beta = layer.beta - layer.d_beta * current_lr * bn_lr_rate;
             }
         }
     }
@@ -400,7 +401,7 @@ void NeuralNetwork::updateParameters() {
                 Matrix gamma_update = m_gamma_corrected.hadamard(
                     (v_gamma_corrected.apply([](double x) { return sqrt(x); }) + EPS).apply([](double x) { return 1.0 / x; })
                 );
-                layer.gamma = layer.gamma - gamma_update * current_lr;
+                layer.gamma = layer.gamma - gamma_update * current_lr * bn_lr_rate;
 
                 // 更新β
                 Matrix m_beta = layer.m_bias;
@@ -412,11 +413,36 @@ void NeuralNetwork::updateParameters() {
                 Matrix beta_update = m_beta_corrected.hadamard(
                     (v_beta_corrected.apply([](double x) { return sqrt(x); }) + EPS).apply([](double x) { return 1.0 / x; })
                 );
-                layer.beta = layer.beta - beta_update * current_lr;
+                layer.beta = layer.beta - beta_update * current_lr * bn_lr_rate;
             }
         }
     }
-    resetParameters();
+    resetParameters();//重置所有梯度
+}
+
+// BN梯度裁剪
+void NeuralNetwork::clipBNGradients(double max_norm) {
+
+    for (auto& layer : layers) {
+        double layer_grad_norm = 0.0;
+
+        // 批归一化参数梯度
+        if (layer.use_batch_norm) {
+            for (int i = 0; i < layer.d_gamma.getRows(); ++i) {
+                layer_grad_norm += layer.d_gamma(i, 0) * layer.d_gamma(i, 0);
+                layer_grad_norm += layer.d_beta(i, 0) * layer.d_beta(i, 0);
+            }
+            layer_grad_norm = std::sqrt(layer_grad_norm);
+
+            // 逐层裁剪
+            double scale = 1;
+            if (layer_grad_norm > max_norm) {
+                scale = max_norm / layer_grad_norm;
+            }
+            layer.d_gamma = layer.d_gamma * scale;
+            layer.d_beta = layer.d_beta * scale;
+        }
+    }
 }
 
 // 重置梯度参数

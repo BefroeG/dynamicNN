@@ -171,23 +171,24 @@ void NeuralNetwork::printNet() const {
     std::cout << std::string(102, '=') << std::endl << std::endl;
 }
 
-// 批归一化前向传播
 Matrix NeuralNetwork::batchNormForward(const Matrix& z, Layer& layer) {
     int batch_size = z.getRows();
     int feat_size = z.getCols();
+    Matrix z_norm(batch_size, feat_size);
 
+    // 推理模式：使用 running_mean / running_var
     if (!is_training) {
-        // 推理阶段：使用移动平均的均值和方差（修复核心）
-        Matrix mean_broadcast = layer.running_mean.broadcastRows(batch_size);
-        // 重新计算running_var的inv_std（关键修复）
-        Matrix std_running = layer.running_var.apply([this](double x) { return sqrt(x + EPS); });
-        Matrix inv_std_running = std_running.apply([](double x) { return 1.0 / x; });
-        Matrix inv_std_broadcast = inv_std_running.broadcastRows(batch_size);
-
-        Matrix z_hat = (z - mean_broadcast).hadamard(inv_std_broadcast);
-        Matrix gamma_broadcast = layer.gamma.transpose().broadcastRows(batch_size);
-        Matrix beta_broadcast = layer.beta.transpose().broadcastRows(batch_size);
-        Matrix z_norm = z_hat.hadamard(gamma_broadcast) + beta_broadcast;
+        for (int j = 0; j < feat_size; ++j) {
+            double mu = layer.running_mean(0, j);
+            double var = layer.running_var(0, j);
+            double inv_std = 1.0 / std::sqrt(var + EPS);
+            double gamma_j = layer.gamma(j, 0);
+            double beta_j = layer.beta(j, 0);
+            for (int i = 0; i < batch_size; ++i) {
+                z_norm(i, j) = gamma_j * (z(i, j) - mu) * inv_std + beta_j;
+            }
+        }
+        layer.z_norm = z_norm;
         return z_norm;
     }
 
@@ -195,39 +196,54 @@ Matrix NeuralNetwork::batchNormForward(const Matrix& z, Layer& layer) {
     Matrix mean(1, feat_size, 0.0);
     for (int j = 0; j < feat_size; ++j) {
         double sum = 0.0;
-        for (int i = 0; i < batch_size; ++i) {
-            sum += z(i, j);
-        }
+        for (int i = 0; i < batch_size; ++i) sum += z(i, j);
         mean(0, j) = sum / batch_size;
     }
-    layer.running_mean = layer.running_mean * layer.momentum + mean * (1 - layer.momentum);
 
-    // 计算批次方差
     Matrix var(1, feat_size, 0.0);
     for (int j = 0; j < feat_size; ++j) {
-        double sum = 0.0;
         double m = mean(0, j);
+        double sumsq = 0.0;
         for (int i = 0; i < batch_size; ++i) {
-            sum += (z(i, j) - m) * (z(i, j) - m);
+            double d = z(i, j) - m;
+            sumsq += d * d;
         }
-        var(0, j) = sum / batch_size;
+        var(0, j) = sumsq / batch_size;
     }
+
+    // 更新 running statistics
+    layer.running_mean = layer.running_mean * layer.momentum + mean * (1 - layer.momentum);
     layer.running_var = layer.running_var * layer.momentum + var * (1 - layer.momentum);
 
-    // 标准化（防止除零）
-    Matrix std = var.apply([this, &layer](double x) { return sqrt(x + EPS); });
-    Matrix inv_std = std.apply([](double x) { return 1.0 / x; });
-    Matrix z_hat = (z - mean.broadcastRows(batch_size)).hadamard(inv_std.broadcastRows(batch_size));
+    // 计算 std, inv_std, z_hat, z_norm
+    Matrix stdm(1, feat_size, 0.0);
+    Matrix inv_std(1, feat_size, 0.0);
+    for (int j = 0; j < feat_size; ++j) {
+        stdm(0, j) = std::sqrt(var(0, j) + EPS);
+        inv_std(0, j) = 1.0 / stdm(0, j);
+    }
 
-    // 缩放和偏移
-    Matrix z_norm = z_hat.hadamard(layer.gamma.transpose().broadcastRows(batch_size))
-        + layer.beta.transpose().broadcastRows(batch_size);
+    Matrix z_hat(batch_size, feat_size);
+    for (int i = 0; i < batch_size; ++i) {
+        for (int j = 0; j < feat_size; ++j) {
+            z_hat(i, j) = (z(i, j) - mean(0, j)) * inv_std(0, j);
+        }
+    }
 
-    // 保存中间变量供反向传播
+    for (int i = 0; i < batch_size; ++i) {
+        for (int j = 0; j < feat_size; ++j) {
+            double gamma_j = layer.gamma(j, 0);
+            double beta_j = layer.beta(j, 0);
+            z_norm(i, j) = gamma_j * z_hat(i, j) + beta_j;
+        }
+    }
+
+    // 保存中间量以便反向传播
     layer.z_hat = z_hat;
     layer.var = var;
-    layer.std = std;
+    layer.std = stdm;
     layer.inv_std = inv_std;
+    layer.z_norm = z_norm;
 
     return z_norm;
 }
@@ -237,16 +253,16 @@ Matrix NeuralNetwork::forward(const Matrix& epoch_input, bool pre_train) {
     Matrix current = epoch_input;
     for (Layer& layer : layers) {
         layer.batch_input = current;
-        // 计算z = Wx + b
         layer.z = current * layer.weight.transpose() + layer.bias.transpose().broadcastRows(current.getRows());
 
-        // 批归一化（若启用）
         Matrix z_input = layer.z;
         if (!pre_train && layer.use_batch_norm) {
-            z_input = batchNormForward(layer.z, layer);
+            z_input = batchNormForward(layer.z, layer); // batchNormForward 会设置 layer.z_norm
+        } else {
+            layer.z_norm = layer.z; // 无 BN 情形也保留 z_norm 以简化后续逻辑（activation 的输入）
         }
-        // 激活函数
-        layer.a = activate(z_input, layer.activation);
+
+        layer.a = activate(layer.z_norm, layer.activation);
         current = layer.a;
     }
     return current;
@@ -271,49 +287,46 @@ Matrix NeuralNetwork::batchNormBackward(const Matrix& dz_norm, Layer& layer) {
     layer.d_gamma = d_gamma;
     layer.d_beta = d_beta;
 
-    // 2. 计算 dz_hat = dy ⊙ γ（dy 是上层传入的 dz_norm）
-    Matrix gamma_broadcast = layer.gamma.transpose().broadcastRows(batch_size);
-    Matrix dz_hat = dz_norm.hadamard(gamma_broadcast);
+    // 2) compute dz_hat = dz_norm * gamma
+    Matrix dz_hat(batch_size, feat_size, 0.0);
+    for (int i = 0; i < batch_size; ++i) {
+        for (int j = 0; j < feat_size; ++j) {
+            dz_hat(i, j) = dz_norm(i, j) * layer.gamma(j, 0);
+        }
+    }
 
-    // 3. 计算原始 z 的梯度 dz（核心修复：移除多余的 gamma_j 乘法）
+    // 3) compute d_z (derivative wrt original pre-BN z)
     Matrix dz(batch_size, feat_size, 0.0);
     for (int j = 0; j < feat_size; ++j) {
-        double ivs = layer.inv_std(0, j); // 1/sqrt(var + EPS)
+        double inv_s = layer.inv_std(0, j); // 1/sqrt(var + EPS)
         double sum_dz_hat = 0.0;
         double sum_dz_hat_z_hat = 0.0;
-
-        // 逐特征累加 dz_hat 和 dz_hat*z_hat
         for (int i = 0; i < batch_size; ++i) {
             sum_dz_hat += dz_hat(i, j);
             sum_dz_hat_z_hat += dz_hat(i, j) * layer.z_hat(i, j);
         }
-
-        // 计算每个样本的 dz_i（标准公式实现）
         for (int i = 0; i < batch_size; ++i) {
-            double term1 = dz_hat(i, j) * ivs;
-            double term2 = sum_dz_hat * ivs / batch_size;
-            double term3 = layer.z_hat(i, j) * sum_dz_hat_z_hat * ivs / batch_size;
-            dz(i, j) = term1 - term2 - term3;
+            // dx_i = (1/N) * inv_s * (N * dz_hat_i - sum(dz_hat) - z_hat_i * sum(dz_hat * z_hat))
+            double term = (batch_size * dz_hat(i, j) - sum_dz_hat - layer.z_hat(i, j) * sum_dz_hat_z_hat);
+            dz(i, j) = (inv_s * term) / static_cast<double>(batch_size);
         }
     }
 
     return dz;
 }
 
-// 反向传播
 void NeuralNetwork::backward(const Matrix& epoch_target, const Matrix& epoch_output) {
-    // 输出层误差（均方误差导数）
     int n = epoch_target.getRows();
     Matrix delta = (epoch_output - epoch_target) * 2.0 * (1.0 / n);
 
-    // 从输出层反向计算梯度
-    for (int i = layers.size() - 1; i >= 0; --i) {
+    for (int i = static_cast<int>(layers.size()) - 1; i >= 0; --i) {
         Layer& layer = layers[i];
-        // 激活函数导数
-        Matrix z_input = layer.use_batch_norm ? layer.z_hat : layer.z;
-        delta = delta.hadamard(activationDerivative(z_input, layer.activation));
 
-        // 批归一化反向传播
+        // 激活导数应基于 BN 后的 z_norm（若使用 BN），否则基于原始 z
+        Matrix z_for_act = layer.use_batch_norm ? layer.z_norm : layer.z;
+        delta = delta.hadamard(activationDerivative(z_for_act, layer.activation));
+
+        // 若使用 BN，则 delta 是对 z_norm 的导数，这里先执行 BN 反传得到对 z 的导数
         if (layer.use_batch_norm) {
             delta = batchNormBackward(delta, layer);
         }
@@ -499,9 +512,9 @@ void NeuralNetwork::preTrain() {
                     }
                 }
                 // 偏置初始化为小正数（避免ReLU初始死亡）
-                for (int i = 0; i < layer.bias.getRows(); ++i) {
-                    layer.bias(i, 0) = b_dist(gen);
-                }
+//                 for (int i = 0; i < layer.bias.getRows(); ++i) {
+//                     layer.bias(i, 0) = b_dist(gen);
+//                 }
                 input_dim = layer.weight.getRows();
             }
         }
@@ -638,6 +651,7 @@ void NeuralNetwork::printTrainedNet() {
                 std::cout << std::setw(10) << std::setprecision(6) << w(i,j)
                     << " (" << std::setw(5) << std::setprecision(2)
                     << (w(i, j) - _w(i, j))/(_w(i, j)+EPS) << "%)";
+
                 if (j != w.getCols() - 1) {
                     std::cout << " | ";
                 }

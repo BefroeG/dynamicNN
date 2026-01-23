@@ -31,6 +31,7 @@ struct Layer {
 
     Matrix batch_input;   // 批次输入数据
     Matrix z;             // 前向传播中间值（z = Wx + b）
+    Matrix z_norm;        // 经过批归一化后的z（用于激活函数输入）
     Matrix a;             // 前向传播输出（a = activate(z)）
 
     // ADAM优化器参数
@@ -85,9 +86,9 @@ struct Layer {
         d_beta(_b.getRows(), 1, 0.0),
         running_mean(1, _b.getRows(), 0.0),
         running_var(1, _b.getRows(), 0.0),
-        var(_w.getRows(), 1),
-        std(_w.getRows(), 1),
-        inv_std(_w.getRows(), 1),
+        var(1, _w.getRows(), 0.0),
+        std(1, _w.getRows(), 0.0),
+        inv_std(1, _w.getRows(), 0.0),
         m_gamma(_b.getRows(), 1, 0.0),  // 新增
         v_gamma(_b.getRows(), 1, 0.0),  // 新增
         m_beta(_b.getRows(), 1, 0.0),   // 新增

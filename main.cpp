@@ -39,6 +39,7 @@ int main() {
         *                          参数配置完毕                             *
         *******************************************************************/
         // 1. 创建神经网络（仅指定学习率和优化器，批归一化由initLayers控制）
+
         NeuralNetwork nn(learning_rate, OptimizerType::ADAM);
 
         // 2. 加载数据（修改file_name更换数据文件）

@@ -55,7 +55,7 @@ void NeuralNetwork::loadData(const std::string& filename, char delimiter) {
         true_points.push_back(std::make_pair(_x, _y));
     }
     file.close();
-    std::cout << "成功加载 " << true_points.size() << " 条数据" << std::endl;
+    std::cout << ">>>> 文件读取完成: 成功加载数据= " << true_points.size() << std::endl;
 }
 
 // 标准化数据（均值0，方差1）
@@ -90,18 +90,19 @@ void NeuralNetwork::standardizeData() {
         norm_input(i, 0) = (true_points[i].first - x_mean) / x_std;
         norm_target(i, 0) = (true_points[i].second - y_mean) / y_std;
     }
+    std::cout << ">>>> 标准化完成: 成功处理数据= " << n << std::endl;
 }
 
 // 初始化网络层（带批归一化控制）
 void NeuralNetwork::initLayers(const std::vector<int>& hidden_layers, bool use_bn) {
     layers.clear();
-    int input_dim = 1; // 单变量回归，输入维度固定为1
 
     // 初始化随机数生成器（仅初始化一次）
     static std::mt19937 gen(std::chrono::system_clock::now().time_since_epoch().count());
-    static std::normal_distribution<double> dist(0.0, 1.0);
-    static std::uniform_real_distribution<double> bias_dist(0.01, 0.1);
+    static std::normal_distribution<double> w_dist(0.0, 1.0);
+    static std::uniform_real_distribution<double> b_dist(0.01, 0.1);
 
+    int input_dim = 1; // 单变量回归，输入维度固定为1
     // 初始化隐藏层（He初始化适配ReLU）
     for (int h_dim : hidden_layers) {
         Matrix w(h_dim, input_dim);
@@ -110,12 +111,12 @@ void NeuralNetwork::initLayers(const std::vector<int>& hidden_layers, bool use_b
         // 权重初始化
         for (int i = 0; i < w.getRows(); ++i) {
             for (int j = 0; j < w.getCols(); ++j) {
-                w(i, j) = dist(gen) * std_dev_he;
+                w(i, j) = w_dist(gen) * std_dev_he;
             }
         }
         // 偏置初始化为小正数（避免ReLU初始死亡）
         for (int i = 0; i < b.getRows(); ++i) {
-            b(i, 0) = bias_dist(gen);
+            b(i, 0) = b_dist(gen);
         }
         // 创建隐藏层（ReLU激活，批归一化由参数控制）
         layers.emplace_back(w, b, ActivationType::RELU, use_bn);
@@ -128,19 +129,13 @@ void NeuralNetwork::initLayers(const std::vector<int>& hidden_layers, bool use_b
     double std_dev_xavier = std::sqrt(1.0 / (input_dim + 1)); // Xavier标准差
     for (int i = 0; i < out_w.getRows(); ++i) {
         for (int j = 0; j < out_w.getCols(); ++j) {
-            out_w(i, j) = dist(gen) * std_dev_xavier;
+            out_w(i, j) = w_dist(gen) * std_dev_xavier;
         }
     }
     out_b(0, 0) = 0.0;
     // 输出层禁用批归一化
     layers.emplace_back(out_w, out_b, ActivationType::LINEAR, false);
-
-    std::cout << "网络层初始化完成" << std::endl;
-}
-
-// 重载：默认禁用批归一化
-void NeuralNetwork::initLayers(const std::vector<int>& hidden_layers) {
-    initLayers(hidden_layers, false);
+    std::cout << ">>>> 网络层初始化完成" << std::endl;
 }
 
 // 打印网络结构
@@ -232,9 +227,8 @@ Matrix NeuralNetwork::batchNormForward(const Matrix& z, Layer& layer) {
 }
 
 // 前向传播
-Matrix NeuralNetwork::forward(const Matrix& epoch_input) {
+Matrix NeuralNetwork::forward(const Matrix& epoch_input, bool pre_train) {
     Matrix current = epoch_input;
-
     for (Layer& layer : layers) {
         layer.batch_input = current;
         // 计算z = Wx + b
@@ -242,11 +236,9 @@ Matrix NeuralNetwork::forward(const Matrix& epoch_input) {
 
         // 批归一化（若启用）
         Matrix z_input = layer.z;
-        if (layer.use_batch_norm) {
+        if (!pre_train && layer.use_batch_norm) {
             z_input = batchNormForward(layer.z, layer);
-            layer.z_norm = z_input;
         }
-
         // 激活函数
         layer.a = activate(z_input, layer.activation);
         current = layer.a;
@@ -309,7 +301,7 @@ void NeuralNetwork::backward(const Matrix& epoch_target, const Matrix& epoch_out
     for (int i = layers.size() - 1; i >= 0; --i) {
         Layer& layer = layers[i];
         // 激活函数导数
-        Matrix z_input = layer.use_batch_norm ? layer.z_norm : layer.z;
+        Matrix z_input = layer.use_batch_norm ? layer.z_hat : layer.z;
         delta = delta.hadamard(activationDerivative(z_input, layer.activation));
 
         // 批归一化反向传播
@@ -435,6 +427,48 @@ void NeuralNetwork::resetParameters() {
     }
 }
 
+void NeuralNetwork::preTrain() {
+    int max_training_limit = 3;     //最大训练次数
+    double reset_death_ratio = 0.6; //重置参数阈值
+    std::cout << ">>>> 开始预训练: 神经元死亡重置阈值= " << std::fixed << std::setprecision(1) << reset_death_ratio * 100
+        << "%) | 最大训练次数 = " << max_training_limit
+        << " | 训练数据条数= " << norm_input.getRows() << std::endl;
+    for (size_t i = 0;i < max_training_limit;++i) {
+        forward(norm_input, true);
+        if (checkNeuronDeath(reset_death_ratio)) {
+            // 清空所有层的中间数据 TODO
+            std::cout << ">>>> 预训练完成: 训练次数 = (" << i + 1 << " / " << max_training_limit << ")\n" << std::endl;  
+            return;
+        }
+        else {
+            std::mt19937 gen(std::chrono::system_clock::now().time_since_epoch().count());
+            std::normal_distribution<double> w_dist(0.0, 1.0);
+            std::uniform_real_distribution<double> b_dist(0.01, 0.1);
+            // 重置隐藏层的全部w b参数
+            int input_dim = 1;
+            for (size_t l = 0;l < layers.size();++l) {
+                Layer& layer = layers[l];
+                if (layer.activation == ActivationType::LINEAR) {
+                    continue;
+                }
+                double std_dev_he = std::sqrt(2.0 / input_dim); // He初始化标准差
+                // 权重初始化
+                for (int i = 0; i < layer.weight.getRows(); ++i) {
+                    for (int j = 0; j < layer.weight.getCols(); ++j) {
+                        layer.weight(i, j) = w_dist(gen) * std_dev_he;
+                    }
+                }
+                // 偏置初始化为小正数（避免ReLU初始死亡）
+                for (int i = 0; i < layer.bias.getRows(); ++i) {
+                    layer.bias(i, 0) = b_dist(gen);
+                }
+                input_dim = layer.weight.getRows();
+            }
+        }
+    }
+    std::cout << ">>>> 预训练完成: 训练次数 = (" << max_training_limit << " / " << max_training_limit << ")\n" << std::endl;
+}
+
 // 训练网络
 void NeuralNetwork::train(size_t epochs, size_t batch_size) {
     if (norm_input.getRows() == 0 || norm_target.getRows() == 0) {
@@ -446,16 +480,23 @@ void NeuralNetwork::train(size_t epochs, size_t batch_size) {
     if (batch_size == 0 || batch_size > norm_input.getRows()) {
         throw std::runtime_error("批次大小无效（需大于0且不超过数据总量）");
     }
-
     is_training = true;
+
+    preTrain(); // 预训练
+    printNet(); //打印网络结构
+    // 记录开始时间
+    auto start = std::chrono::high_resolution_clock::now();
+
     int n_samples = norm_input.getRows();
     int n_batches = (n_samples + batch_size - 1) / batch_size;
-    std::cout << "开始训练，总轮数=" << epochs << "，初始学习率=" << lr
-        << "，批次大小=" << batch_size << "，每轮批次数=" << n_batches << std::endl;
+    std::cout << "\n>>>> 开始训练: 总轮数= " << epochs << " | 初始学习率= " << lr
+        << " | 批次大小= " << batch_size << " | 每轮批次数= " << n_batches << std::endl << std::endl;
 
     // 样本索引初始化
     std::vector<int> indices(n_samples);
     std::iota(indices.begin(), indices.end(), 0);
+
+    double final_delta = 0.0;  // 最终损失值
 
     for (size_t epoch = 0; epoch < epochs; ++epoch) {
         // 学习率衰减
@@ -498,25 +539,27 @@ void NeuralNetwork::train(size_t epochs, size_t batch_size) {
             }
             epoch_loss += batch_loss;
         }
-
-        // 计算平均损失
-        epoch_loss /= n_samples;
+        // 计算平均损失和更新参数
+        final_delta = epoch_loss / static_cast<double>(n_samples);
 
         if (epoch % 25 == 0 || epoch == epochs - 1)
-            lossVector.push_back(epoch_loss);//记录每轮的损失
+            lossVector.push_back(final_delta);//记录每轮的损失
 
         // 打印训练信息
         if (epoch % 500 == 0 || epoch == epochs - 1) {
-            std::cout << "Epoch " << epoch << "，均方误差=" << std::fixed << std::setprecision(6) << epoch_loss
-                << "，当前学习率=" << current_lr << std::endl;
+            std::cout << "Epoch " << epoch << "，均方误差= " << std::fixed << std::setprecision(6) << final_delta
+                << "，(学习率= " << current_lr << ")" << std::endl;
         }
         if (epoch % 100 == 0) {
-            monitorNeuronDeath();
+            checkNeuronDeath(8.0);
         }
     }
 
     is_training = false;
-    std::cout << "训练完成！" << std::endl;
+    auto end = std::chrono::high_resolution_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start);
+    std::cout << "\n>>>> 训练完毕: 耗时= " << duration.count() / 1000000000 << " (秒) | 最终损失= "
+        << std::fixed << std::setprecision(6) << final_delta << std::endl << std::endl;
 }
 
 // 预测单值
@@ -529,8 +572,8 @@ double NeuralNetwork::predict(double x) {
 }
 
 // 监测ReLU神经元死亡
-void NeuralNetwork::monitorNeuronDeath() {
-    const double death_threshold = 1e-6;
+bool NeuralNetwork::checkNeuronDeath(double death_ratio) {
+    const double death_threshold = 1e-6;//神经元死亡阈值
     for (size_t l = 0; l < layers.size(); ++l) {
         const Layer& layer = layers[l];
         if (layer.activation == ActivationType::LINEAR) continue;
@@ -547,22 +590,15 @@ void NeuralNetwork::monitorNeuronDeath() {
                 }
             }
         }
-
-        // 输出死亡比例
-        double death_ratio = static_cast<double>(dead_neurons) / total_neurons;
-        if (death_ratio > 0.8) {
-            std::cout << "隐藏层 " << l + 1 << " (RELU): 死亡神经元 = " << dead_neurons << "/" << total_neurons
+        // 死亡比例
+        double ratio = static_cast<double>(dead_neurons) / total_neurons;
+        if (ratio >= death_ratio) {
+            std::cout << ">>隐藏层 " << l + 1 << " (RELU): 死亡神经元 = " << dead_neurons << "/" << total_neurons
                 << " (" << std::fixed << std::setprecision(1) << death_ratio * 100 << "%)" << std::endl;
+            return false;
         }
-        //if (death_ratio == 1.0) {
-        //    std::cout << std::string(30, '=') << " batch_input " << std::string(30, '=') << std::endl;
-        //    layer.batch_input.print();
-        //    std::cout << std::string(30, '=') << " batch_z " << std::string(30, '=') << std::endl;
-        //    layer.z.print();
-        //    std::cout << std::string(30, '=') << " batch_a " << std::string(30, '=') << std::endl;
-        //    layer.a.print();
-        //}
     }
+    return true;
 }
 
 // 控制台可视化拟合结果

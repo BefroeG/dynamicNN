@@ -250,7 +250,7 @@ Matrix NeuralNetwork::forward(const Matrix& epoch_input, bool pre_train) {
 // 批归一化反向传播
 Matrix NeuralNetwork::batchNormBackward(const Matrix& dz_norm, Layer& layer) {
     int batch_size = dz_norm.getRows();
-    int feat_size = dz_norm.getCols();;
+    int feat_size = dz_norm.getCols();
 
     // 计算γ和β的梯度
     Matrix d_gamma(feat_size, 1, 0.0);
@@ -298,8 +298,8 @@ Matrix NeuralNetwork::batchNormBackward(const Matrix& dz_norm, Layer& layer) {
 // 反向传播
 void NeuralNetwork::backward(const Matrix& epoch_target, const Matrix& epoch_output) {
     // 输出层误差（均方误差导数）
-    Matrix delta = (epoch_output - epoch_target) * 2.0;
     int n = epoch_target.getRows();
+    Matrix delta = (epoch_output - epoch_target) * 2.0 * (1.0 / n);
 
     // 从输出层反向计算梯度
     for (int i = layers.size() - 1; i >= 0; --i) {
@@ -315,7 +315,7 @@ void NeuralNetwork::backward(const Matrix& epoch_target, const Matrix& epoch_out
 
         // 计算权重梯度
         Matrix a_prev = layer.batch_input;
-        layer.d_weight = (delta.transpose() * a_prev) * (1.0 / n);
+        layer.d_weight = (delta.transpose() * a_prev);
 
         // 计算偏置梯度
         Matrix bias_sum(delta.getCols(), 1);
@@ -324,7 +324,7 @@ void NeuralNetwork::backward(const Matrix& epoch_target, const Matrix& epoch_out
             for (int k = 0; k < delta.getRows(); ++k) {
                 sum += delta(k, j);
             }
-            bias_sum(j, 0) = sum / n;
+            bias_sum(j, 0) = sum;
         }
         layer.d_bias = bias_sum;
 

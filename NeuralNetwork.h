@@ -51,7 +51,6 @@ struct Layer {
     double momentum = 0.9;// 移动平均动量
 
     // 批归一化中间变量（反向传播用）
-    Matrix z_norm;        // 归一化后的z
     Matrix z_hat;         // 标准化后的z（未缩放偏移）
     Matrix var;           // 批次方差
     Matrix std;           // 批次标准差
@@ -152,8 +151,6 @@ public:
     // 标准化数据
     void standardizeData();
 
-    // 初始化网络层（输入层固定为1，输出层固定为1）
-    void initLayers(const std::vector<int>& hidden_layers);
     // 初始化网络层（带批归一化控制）
     void initLayers(const std::vector<int>& hidden_layers, bool use_bn = false);
 
@@ -163,8 +160,11 @@ public:
     // 训练网络（指定轮数和批次大小）
     void train(size_t epochs, size_t batch_size = 32);
 
+    // 预训练检查权重参数是否造成神经元死亡
+    void preTrain();
+
     // 前向传播
-    Matrix forward(const Matrix& epoch_input);
+    Matrix forward(const Matrix& epoch_input,bool pre_train = false);
 
     // 反向传播
     void backward(const Matrix& epoch_target, const Matrix& epoch_output);
@@ -178,8 +178,8 @@ public:
     // 预测单输入值
     double predict(double x);
 
-    // 监测ReLU神经元死亡
-    void monitorNeuronDeath();
+    // 检测ReLU神经元死亡
+    bool checkNeuronDeath(double death_ratio = 0.6);
 
     // 控制台可视化拟合结果
     void plot_function(bool ptrue = true, int width = 100, int height = 80);

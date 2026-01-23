@@ -19,7 +19,7 @@ int main() {
         //【隐藏层】可以设置0-3层，每层神经元数量为1-10个
         // 示例：表示【隐藏层】为3层 ，每层【隐藏层】的神经元个数分别为 8个，4个，1个
         // std::vector<int> hidden_layer_sizes = { 8 , 4 , 1 };
-        std::vector<int> hidden_layers = { 2,4,2 };
+        std::vector<int> hidden_layers = { 3,4,2 };
 
         // 请将训练文件拷贝到本程序目录下，并设置训练文件名称                    
         std::string file_name = "complex_function_data";

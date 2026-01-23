@@ -252,12 +252,11 @@ Matrix NeuralNetwork::forward(const Matrix& epoch_input, bool pre_train) {
     return current;
 }
 
-// 批归一化反向传播
 Matrix NeuralNetwork::batchNormBackward(const Matrix& dz_norm, Layer& layer) {
     int batch_size = dz_norm.getRows();
     int feat_size = dz_norm.getCols();
 
-    // 计算γ和β的梯度
+    // 1. 计算 γ 和 β 的梯度（标准化：除以 batch_size 提升稳定性）
     Matrix d_gamma(feat_size, 1, 0.0);
     Matrix d_beta(feat_size, 1, 0.0);
     for (int j = 0; j < feat_size; ++j) {
@@ -272,28 +271,29 @@ Matrix NeuralNetwork::batchNormBackward(const Matrix& dz_norm, Layer& layer) {
     layer.d_gamma = d_gamma;
     layer.d_beta = d_beta;
 
-    // 计算z_hat的梯度
-    Matrix dz_hat = dz_norm.hadamard(layer.gamma.transpose().broadcastRows(batch_size));
+    // 2. 计算 dz_hat = dy ⊙ γ（dy 是上层传入的 dz_norm）
+    Matrix gamma_broadcast = layer.gamma.transpose().broadcastRows(batch_size);
+    Matrix dz_hat = dz_norm.hadamard(gamma_broadcast);
 
-    // 计算原始z的梯度（修复：加入γ因子）
-    Matrix dz = Matrix(batch_size, feat_size, 0.0);
+    // 3. 计算原始 z 的梯度 dz（核心修复：移除多余的 gamma_j 乘法）
+    Matrix dz(batch_size, feat_size, 0.0);
     for (int j = 0; j < feat_size; ++j) {
-        double ivs = layer.inv_std(0, j);
-        double gamma_j = layer.gamma(j, 0); // 获取当前特征的γ
+        double ivs = layer.inv_std(0, j); // 1/sqrt(var + EPS)
         double sum_dz_hat = 0.0;
         double sum_dz_hat_z_hat = 0.0;
 
+        // 逐特征累加 dz_hat 和 dz_hat*z_hat
         for (int i = 0; i < batch_size; ++i) {
             sum_dz_hat += dz_hat(i, j);
             sum_dz_hat_z_hat += dz_hat(i, j) * layer.z_hat(i, j);
         }
 
+        // 计算每个样本的 dz_i（标准公式实现）
         for (int i = 0; i < batch_size; ++i) {
             double term1 = dz_hat(i, j) * ivs;
             double term2 = sum_dz_hat * ivs / batch_size;
             double term3 = layer.z_hat(i, j) * sum_dz_hat_z_hat * ivs / batch_size;
-            // 核心修复：乘以γ
-            dz(i, j) = gamma_j * (term1 - term2 - term3);
+            dz(i, j) = term1 - term2 - term3;
         }
     }
 
@@ -394,31 +394,29 @@ void NeuralNetwork::updateParameters() {
             );
             layer.bias = layer.bias - bias_update * current_lr;
 
-            // 更新批归一化参数
+            // ADAM 优化器中 BN 参数更新的修复代码
             if (layer.use_batch_norm) {
-                // 更新γ
-                Matrix m_gamma = layer.m_bias;
-                Matrix v_gamma = layer.v_bias;
-                m_gamma = m_gamma * beta1 + layer.d_gamma * (1.0 - beta1);
-                v_gamma = v_gamma * beta2 + (layer.d_gamma.hadamard(layer.d_gamma)) * (1.0 - beta2);
-                Matrix m_gamma_corrected = m_gamma * m_correction;
-                Matrix v_gamma_corrected = v_gamma * v_correction;
+                // 更新 γ 的一阶矩和二阶矩（使用独立的 m_gamma/v_gamma）
+                layer.m_gamma = layer.m_gamma * beta1 + layer.d_gamma * (1.0 - beta1);
+                layer.v_gamma = layer.v_gamma * beta2 + (layer.d_gamma.hadamard(layer.d_gamma)) * (1.0 - beta2);
+                // γ 的偏差校正
+                Matrix m_gamma_corrected = layer.m_gamma * m_correction;
+                Matrix v_gamma_corrected = layer.v_gamma * v_correction;
                 Matrix gamma_update = m_gamma_corrected.hadamard(
                     (v_gamma_corrected.apply([](double x) { return sqrt(x); }) + EPS).apply([](double x) { return 1.0 / x; })
                 );
-                layer.gamma = layer.gamma - gamma_update * current_lr * bn_lr_rate;
+                layer.gamma = layer.gamma - gamma_update * current_lr;
 
-                // 更新β
-                Matrix m_beta = layer.m_bias;
-                Matrix v_beta = layer.v_bias;
-                m_beta = m_beta * beta1 + layer.d_beta * (1.0 - beta1);
-                v_beta = v_beta * beta2 + (layer.d_beta.hadamard(layer.d_beta)) * (1.0 - beta2);
-                Matrix m_beta_corrected = m_beta * m_correction;
-                Matrix v_beta_corrected = v_beta * v_correction;
+                // 更新 β 的一阶矩和二阶矩（使用独立的 m_beta/v_beta）
+                layer.m_beta = layer.m_beta * beta1 + layer.d_beta * (1.0 - beta1);
+                layer.v_beta = layer.v_beta * beta2 + (layer.d_beta.hadamard(layer.d_beta)) * (1.0 - beta2);
+                // β 的偏差校正
+                Matrix m_beta_corrected = layer.m_beta * m_correction;
+                Matrix v_beta_corrected = layer.v_beta * v_correction;
                 Matrix beta_update = m_beta_corrected.hadamard(
                     (v_beta_corrected.apply([](double x) { return sqrt(x); }) + EPS).apply([](double x) { return 1.0 / x; })
                 );
-                layer.beta = layer.beta - beta_update * current_lr * bn_lr_rate;
+                layer.beta = layer.beta - beta_update * current_lr;
             }
         }
     }
@@ -458,6 +456,11 @@ void NeuralNetwork::resetParameters() {
         if (layer.use_batch_norm) {
             layer.d_gamma = Matrix(layer.gamma.getRows(), layer.gamma.getCols(), 0);
             layer.d_beta = Matrix(layer.beta.getRows(), layer.beta.getCols(), 0);
+            // 新增：重置 BN 的 ADAM 矩
+            layer.m_gamma = Matrix(layer.m_gamma.getRows(), layer.m_gamma.getCols(), 0);
+            layer.v_gamma = Matrix(layer.v_gamma.getRows(), layer.v_gamma.getCols(), 0);
+            layer.m_beta = Matrix(layer.m_beta.getRows(), layer.m_beta.getCols(), 0);
+            layer.v_beta = Matrix(layer.v_beta.getRows(), layer.v_beta.getCols(), 0);
         }
     }
 }

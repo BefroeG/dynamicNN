@@ -61,6 +61,12 @@ struct Layer {
     Matrix _gamma;         // 原始缩放参数 γ (output_size, 1)
     Matrix _beta;          // 原始偏移参数 β (output_size, 1)
 
+    // 新增：BN 参数的 ADAM 一阶/二阶矩
+    Matrix m_gamma;  // γ 的一阶矩
+    Matrix v_gamma;  // γ 的二阶矩
+    Matrix m_beta;   // β 的一阶矩
+    Matrix v_beta;   // β 的二阶矩
+
     // 层构造函数
     Layer(Matrix _w, Matrix _b, ActivationType _a, bool _use_bn = false)
         : weight(_w), bias(_b), activation(_a),
@@ -81,7 +87,11 @@ struct Layer {
         running_var(1, _b.getRows(), 0.0),
         var(_w.getRows(), 1),
         std(_w.getRows(), 1),
-        inv_std(_w.getRows(), 1)
+        inv_std(_w.getRows(), 1),
+        m_gamma(_b.getRows(), 1, 0.0),  // 新增
+        v_gamma(_b.getRows(), 1, 0.0),  // 新增
+        m_beta(_b.getRows(), 1, 0.0),   // 新增
+        v_beta(_b.getRows(), 1, 0.0)    // 新增
     {
         // 创建随机数引擎（mt19937 是性能和随机性都很好的梅森旋转算法）
         std::mt19937 generator(std::chrono::system_clock::now().time_since_epoch().count());

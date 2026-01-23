@@ -19,10 +19,10 @@ int main() {
         //【隐藏层】可以设置0-3层，每层神经元数量为1-10个
         // 示例：表示【隐藏层】为3层 ，每层【隐藏层】的神经元个数分别为 8个，4个，1个
         // std::vector<int> hidden_layer_sizes = { 8 , 4 , 1 };
-        std::vector<int> hidden_layers = { 2,4 };
+        std::vector<int> hidden_layers = { 8,4 };
 
         // 请将训练文件拷贝到本程序目录下，并设置训练文件名称                    
-        std::string file_name = "complex_function_data";
+        std::string file_name = "2X^3+X^2-3X+2";
         //*********************  以下为系统内置训练文件 **********************/
         //file_name = "-2X+8";               // y = -2X+8       无噪声 
         //  (-3,14)(-2,12)(-1,10)(0,8)(1,6)(2,4)(3,2)
@@ -48,13 +48,13 @@ int main() {
         nn.standardizeData();
 
         // 4. 初始化网络层（{隐藏层维度}, 批归一化开关：true/false）
-        nn.initLayers(hidden_layers, false);
+        nn.initLayers(hidden_layers, true);
 
         // 打印网络结构（可选，用于验证配置）
         nn.printNet();
 
         // 5. 训练网络（参数1：训练轮数，参数2：批次大小）
-        nn.train(epochs, 100);
+        nn.train(epochs, 125);
 
         // 打印训练后网络参数（可选）
         nn.printNet();

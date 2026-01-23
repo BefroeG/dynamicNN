@@ -119,7 +119,7 @@ private:
     int adam_step = 0;          // ADAM迭代步数（偏差校正用）
 
     // 学习率衰减参数
-    double lr_decay_rate = 1;// 学习率衰减率（每轮衰减0.5%）0.995
+    double lr_decay_rate = 0.995;// 学习率衰减率（每轮衰减0.5%）0.995
     int lr_decay_step = 100;    // 学习率衰减步长
 
     std::vector<double> lossVector; //损失函数图像

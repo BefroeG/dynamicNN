@@ -277,12 +277,14 @@ Matrix NeuralNetwork::batchNormBackward(const Matrix& dz_norm, Layer& layer) {
     // 计算z_hat的梯度
     Matrix dz_hat = dz_norm.hadamard(layer.gamma.transpose().broadcastRows(batch_size));
 
-    // 计算原始z的梯度
+    // 计算原始z的梯度（修复：加入γ因子）
     Matrix dz = Matrix(batch_size, feat_size, 0.0);
     for (int j = 0; j < feat_size; ++j) {
         double ivs = layer.inv_std(0, j);
+        double gamma_j = layer.gamma(j, 0); // 获取当前特征的γ
         double sum_dz_hat = 0.0;
         double sum_dz_hat_z_hat = 0.0;
+
         for (int i = 0; i < batch_size; ++i) {
             sum_dz_hat += dz_hat(i, j);
             sum_dz_hat_z_hat += dz_hat(i, j) * layer.z_hat(i, j);
@@ -292,7 +294,8 @@ Matrix NeuralNetwork::batchNormBackward(const Matrix& dz_norm, Layer& layer) {
             double term1 = dz_hat(i, j) * ivs;
             double term2 = sum_dz_hat * ivs / batch_size;
             double term3 = layer.z_hat(i, j) * sum_dz_hat_z_hat * ivs / batch_size;
-            dz(i, j) = term1 - term2 - term3;
+            // 核心修复：乘以γ
+            dz(i, j) = gamma_j * (term1 - term2 - term3);
         }
     }
 

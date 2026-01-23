@@ -48,13 +48,13 @@ int main() {
         nn.standardizeData();
 
         // 4. 初始化网络层（{隐藏层维度}, 批归一化开关：true/false）
-        nn.initLayers(hidden_layers, true);
+        nn.initLayers(hidden_layers, false);
 
         // 打印网络结构（可选，用于验证配置）
         nn.printNet();
 
         // 5. 训练网络（参数1：训练轮数，参数2：批次大小）
-        nn.train(epochs, 125);
+        nn.train(epochs, 100);
 
         // 打印训练后网络参数（可选）
         nn.printNet();

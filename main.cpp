@@ -51,6 +51,9 @@ int main() {
         // 4. 初始化网络层（{隐藏层维度}, 批归一化开关：true/false）
         nn.initLayers(hidden_layers, true);
 
+        // 网络预训练避免启动时过多神经元死亡
+        nn.preTrain();
+
         // 打印网络结构（可选，用于验证配置）
         nn.printNet();
 
@@ -58,7 +61,7 @@ int main() {
         nn.train(epochs, 125);
 
         // 打印训练后网络参数（可选）
-        nn.printNet();
+        nn.printTrainedNet();
 
         nn.plotLossCurve(); // 打印损失函数曲线
 

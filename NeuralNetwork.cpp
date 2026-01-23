@@ -473,7 +473,6 @@ void NeuralNetwork::preTrain() {
         forward(norm_input, true);
         if (checkNeuronDeath(reset_death_ratio)) {
             // 清空所有层的中间数据 TODO
-            recordOriginalParameters();
             std::cout << ">>>> 预训练完成: 训练次数 = (" << i + 1 << " / " << max_training_limit << ")\n" << std::endl;  
             return;
         }
@@ -503,7 +502,6 @@ void NeuralNetwork::preTrain() {
             }
         }
     }
-    recordOriginalParameters();
     std::cout << ">>>> 预训练完成: 训练次数 = (" << max_training_limit << " / " << max_training_limit << ")\n" << std::endl;
 }
 
@@ -519,7 +517,7 @@ void NeuralNetwork::train(size_t epochs, size_t batch_size) {
         throw std::runtime_error("批次大小无效（需大于0且不超过数据总量）");
     }
     is_training = true;
-
+    recordOriginalParameters();//记录原始参数
     // 记录开始时间
     auto start = std::chrono::high_resolution_clock::now();
 
@@ -646,7 +644,7 @@ void NeuralNetwork::printTrainedNet() {
         if(w.getRows() == 1) std::cout << std::endl;
        
         if (!layer.use_batch_norm) {
-            std::cout << "bias: [ ";
+            std::cout << "\nbias: [ ";
             Matrix b = layer.bias.transpose();
             Matrix _b = layer._bias.transpose();
             for (int i = 0; i < b.getCols(); ++i) {

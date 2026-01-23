@@ -155,13 +155,14 @@ void NeuralNetwork::printNet() const {
         input_dim = layer.weight.getRows();
 
         // 打印层参数
-        std::cout << "\nweight:\n\n";layer.weight.print();std::cout << std::endl;
+        std::cout << "\nweight:\n";layer.weight.print();std::cout << std::endl;
+        if(input_dim == 1) std::cout << std::endl;
         if (!layer.use_batch_norm) {
-            std::cout << "\nbias: [ ";layer.bias.transpose().print();std::cout << " ]\n\n";
+            std::cout << "bias: [ ";layer.bias.transpose().print();std::cout << " ]\n";
         }
         else {
-            std::cout << "\ngamma: [ ";layer.gamma.transpose().print();std::cout << " ]\n\n";
-            std::cout << "\nbeta:  [ ";layer.beta.transpose().print();std::cout << " ]\n\n";
+            std::cout << "gamma: [ ";layer.gamma.transpose().print();std::cout << " ]\n";
+            std::cout << "beta:  [ ";layer.beta.transpose().print();std::cout << " ]\n";
         }
         if(i != layers.size()-1)
             std::cout << std::string(102, '-') << std::endl << std::endl;
@@ -430,6 +431,7 @@ void NeuralNetwork::resetParameters() {
     }
 }
 
+// 预训练检查权重参数是否造成神经元死亡
 void NeuralNetwork::preTrain() {
     int max_training_limit = 3;     //最大训练次数
     double reset_death_ratio = 0.6; //重置参数阈值

@@ -748,7 +748,7 @@ bool NeuralNetwork::checkNeuronDeath(double death_ratio) {
 }
 
 // 控制台可视化拟合结果
-void NeuralNetwork::plotFunction(bool ptrue, int width, int height) {
+void NeuralNetwork::plotFunction(bool show_color, bool ptrue, int width, int height) {
     std::cout << std::endl << std::endl << std::string(49, '=') << " 函数拟合曲线 " << std::string(49, '=') << std::endl << std::endl;
     is_training = false;
     size_t size = true_points.size();
@@ -844,21 +844,41 @@ void NeuralNetwork::plotFunction(bool ptrue, int width, int height) {
     }
 
     // 打印画布
-    std::cout << std::string((width / 2 - 21 >= 1 ? (width / 2 - 21) : 1), ' ')
-        << "\033[32m+ 真实数据点\033[0m   \033[31m* 预测数据点\033[0m   \033[33m# 重合数据点\033[0m"
-        << std::endl << std::endl;
+    std::cout << std::string((width / 2 - 21 >= 1 ? (width / 2 - 21) : 1), ' ');
+    if (show_color) {
+        std::cout << "\033[32m+ 真实数据点\033[0m   \033[31m* 预测数据点\033[0m   \033[33m# 重合数据点\033[0m";
+    }
+    else {
+        std::cout << "+ 真实数据点   * 预测数据点   # 重合数据点";
+    }      
+    std::cout << std::endl << std::endl;
 
     for (int row = 0; row < height; ++row) {
         for (int col = 0; col < width; ++col) {
             switch (canvas[row][col]) {
             case '*':
-                std::cout << "\033[31m*\033[0m";
+                if (show_color) {
+                    std::cout << "\033[31m*\033[0m";
+                }
+                else {
+                    std::cout << "*";
+                }
                 break;
             case '+':
-                std::cout << "\033[32m+\033[0m";
+                if (show_color) {
+                    std::cout << "\033[32m+\033[0m";
+                }
+                else {
+                    std::cout << "+";
+                }
                 break;
             case '#':
-                std::cout << "\033[33m#\033[0m";
+                if (show_color) {
+                    std::cout << "\033[33m#\033[0m";
+                }
+                else {
+                    std::cout << "#";
+                }
                 break;
             default:
                 std::cout << canvas[row][col];
@@ -872,7 +892,7 @@ void NeuralNetwork::plotFunction(bool ptrue, int width, int height) {
 }
 
 // 控制台可视化损失函数曲线
-void NeuralNetwork::plotLossCurve(int width, int height, int precision) {
+void NeuralNetwork::plotLossCurve(bool show_color, int width, int height, int precision) {
     // ===================== 1. 严格参数校验 =====================
     if (lossVector.empty()) {
         std::cerr << "[错误] 损失值向量lossVector为空，无法绘制曲线！" << std::endl;
@@ -941,7 +961,12 @@ void NeuralNetwork::plotLossCurve(int width, int height, int precision) {
 
         for (int x = 0; x < plotWidth; ++x) {
             if (canvas[y][x] == '*') {
-                std::cout << "\033[33m*\033[0m";
+                if (show_color) {
+                    std::cout << "\033[33m*\033[0m";
+                }
+                else {
+                    std::cout << "*";
+                }
             }
             else {
                 std::cout << canvas[y][x];

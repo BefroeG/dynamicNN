@@ -293,7 +293,7 @@ Matrix Matrix::broadcastRows(int targetRows) const {
 // ==================== 哈达玛积 ====================
 Matrix Matrix::hadamard(const Matrix& other) const {
     if (rows != other.rows || cols != other.cols) {
-        throw std::invalid_argument("Matrix dimensions must match for Hadamard product");
+        throw std::invalid_argument("进行哈达玛积运算时，矩阵的维度必须匹配");
     }
     if (empty()) return Matrix();
     Matrix result(rows, cols);
@@ -320,7 +320,7 @@ Matrix Matrix::apply(std::function<double(double)> func) const {
 // ==================== 打印矩阵 ====================
 void Matrix::print() const {
     if (empty()) {
-        std::cout << "Empty matrix (0x0)" << std::endl;
+        std::cout << "空矩阵 (0x0)" << std::endl;
         return;
     }
     for (int i = 0; i < rows; ++i) {

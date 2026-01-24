@@ -63,10 +63,10 @@ int main() {
         nn.printTrainedNet();
 
         // 打印损失函数曲线（可选）
-        nn.plotLossCurve();
+        nn.plotLossCurve(false);
 
         // 可视化开关：取消注释启用拟合曲线绘制（可选）
-        nn.plotFunction();
+        nn.plotFunction(false);
 
         // 7. 测试新数据
         do {

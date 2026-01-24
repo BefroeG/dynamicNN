@@ -113,6 +113,7 @@ struct Layer {
 class NeuralNetwork {
 private:
     int epochs;                 // 训练轮次数
+    int true_epochs;            // 实际训练轮次
     double lr;                  // 初始学习率
     double current_lr;          // 当前学习率（支持衰减）
     bool is_training;           // 是否为训练模式
@@ -138,7 +139,7 @@ private:
     int lr_decay_step = 100;    // 学习率衰减步长
     double bn_lr_rate = 0.01;     //批归一化参数学习率衰减
 
-    std::vector<double> lossVector; //损失函数图像
+    std::vector<std::pair<int,double>> lossVector; //损失函数图像
 
     // 反标准化函数
     double inverseStandardizeY(double normalizedY) const { return normalizedY * y_std + y_mean; }
@@ -178,7 +179,7 @@ public:
     void printNet() const;
 
     // 训练网络（指定轮数和批次大小）
-    void train(size_t epochs, size_t batch_size = 32);
+    void train(size_t epochs, size_t batch_size = 32, double early_stopping_loss = 0.0001);
 
     // 预训练检查权重参数是否造成神经元死亡
     void preTrain();

@@ -474,7 +474,7 @@ void NeuralNetwork::preTrain() {
     int max_training_limit = 3;     //最大训练次数
     double reset_death_ratio = 0.6; //重置参数阈值
     std::cout << ">>>> 开始预训练: 神经元死亡重置阈值= " << std::fixed << std::setprecision(1) << reset_death_ratio * 100
-        << "%) | 最大训练次数 = " << max_training_limit
+        << "% | 最大训练次数 = " << max_training_limit
         << " | 训练数据条数= " << norm_input.getRows() << std::endl;
     for (size_t i = 0;i < max_training_limit;++i) {
         forward(norm_input, true);
@@ -518,7 +518,7 @@ void NeuralNetwork::preTrain() {
 }
 
 // 训练网络
-void NeuralNetwork::train(size_t _epochs, size_t batch_size) {
+void NeuralNetwork::train(size_t _epochs, size_t batch_size, double early_stopping_loss) {
     if (norm_input.getRows() == 0 || norm_target.getRows() == 0) {
         throw std::runtime_error("请先加载并标准化数据");
     }
@@ -530,6 +530,8 @@ void NeuralNetwork::train(size_t _epochs, size_t batch_size) {
     }
     is_training = true;
     epochs = _epochs;
+    true_epochs = _epochs;
+
     recordOriginalParameters();//记录原始参数
     // 记录开始时间
     auto start = std::chrono::high_resolution_clock::now();
@@ -589,8 +591,8 @@ void NeuralNetwork::train(size_t _epochs, size_t batch_size) {
         // 计算平均损失和更新参数
         final_delta = epoch_loss / static_cast<double>(n_samples);
 
-        if (epoch % (epochs / 40) == 0 || epoch == epochs - 1)
-            lossVector.push_back(final_delta);//记录每轮的损失
+        if (epoch % (epochs / 20) == 0 || epoch == epochs - 1)
+            lossVector.push_back(std::make_pair(epoch,final_delta));//记录每轮的损失
 
         // 打印训练信息
         if (epoch % (epochs / 10) == 0 || epoch == epochs - 1) {
@@ -599,6 +601,14 @@ void NeuralNetwork::train(size_t _epochs, size_t batch_size) {
         }
         if (epoch % (epochs / 20) == 0) {
             checkNeuronDeath(8.0);
+        }
+        // 提前停止检查
+        if (final_delta < early_stopping_loss) {
+            true_epochs = epoch;
+            lossVector.push_back(std::make_pair(epoch, final_delta));//记录每轮的损失
+            std::cout << "Epoch " << epoch << "，均方误差= " << std::fixed << std::setprecision(6) << final_delta
+                << ", 达到目标误差("<< early_stopping_loss <<")，提前停止训练！" << std::endl;
+            break;
         }
     }
 
@@ -866,23 +876,35 @@ void NeuralNetwork::plotFunction(bool ptrue, int width, int height) {
 
 // 控制台可视化损失函数曲线
 void NeuralNetwork::plotLossCurve(int width, int height, int precision) {
-    // 1. 严格参数校验（强制修正为设定值，比如100x100）
+    // ===================== 1. 严格参数校验 =====================
     if (lossVector.empty()) {
-        std::cout << "错误：损失值vector为空！" << std::endl;
+        std::cerr << "[错误] 损失值向量lossVector为空，无法绘制曲线！" << std::endl;
         return;
     }
     if (lossVector.size() < 2) {
-        std::cout << "错误：损失值数量少于2！" << std::endl;
+        std::cerr << "[错误] 损失值数量少于2个，无法绘制曲线！" << std::endl;
         return;
     }
-    // 5. 绘制画布（精简Y轴刻度，减少占列）
-    std::cout << std::endl << std::string(48, '=') << " 损失函数曲线 " << std::string(48, '=') << std::endl << std::endl;
-    const int plotWidth = std::max(1, width);   // 强制宽度=传入值
-    const int plotHeight = std::max(1, height); // 强制高度=传入值
 
-    // 2. 计算损失值极值
-    double lossMin = *std::min_element(lossVector.begin(), lossVector.end());
-    double lossMax = *std::max_element(lossVector.begin(), lossVector.end());
+    const int plotWidth = std::max(1, width);
+    const int plotHeight = std::max(1, height);
+
+    std::cout << "\n" << std::string(48, '=') << " 损失函数曲线 " << std::string(48, '=') << "\n" << std::endl;
+    std::cout << "MSE损失(精度:" << precision << "位小数)\n" << std::endl;
+
+    // ===================== 2. 计算损失值极值 =====================
+    auto minIter = std::min_element(lossVector.begin(), lossVector.end(),
+        [](const std::pair<int, double>& a, const std::pair<int, double>& b) {
+            return a.second < b.second;
+        });
+    double lossMin = minIter->second;
+
+    auto maxIter = std::max_element(lossVector.begin(), lossVector.end(),
+        [](const std::pair<int, double>& a, const std::pair<int, double>& b) {
+            return a.second < b.second;
+        });
+    double lossMax = maxIter->second;
+
     double lossRange = lossMax - lossMin;
     if (fabs(lossRange) < 1e-12) {
         lossMin -= 0.5;
@@ -890,38 +912,36 @@ void NeuralNetwork::plotLossCurve(int width, int height, int precision) {
         lossRange = 1.0;
     }
 
-    // 3. 初始化画布（严格尺寸）
+    // ===================== 3. 初始化画布 =====================
     std::vector<std::vector<char>> canvas(plotHeight, std::vector<char>(plotWidth, ' '));
 
-    // 4. 强制X轴铺满宽度（仅保留星号，删除竖线绘制）
-    int dataCount = static_cast<int>(lossVector.size());
-    for (int canvasX = 0; canvasX < plotWidth; ++canvasX) { // 遍历画布每一列（0~99）
-        // 反向映射：画布列 → 原始数据索引（强制铺满）
-        double normX = static_cast<double>(canvasX) / (plotWidth - 1); // 0~1
-        int dataIdx = static_cast<int>(normX * (dataCount - 1) + 0.5);
-        dataIdx = dataIdx < 0 ? 0 : (dataIdx >= dataCount ? dataCount - 1 : dataIdx);
+    // ===================== 4. 绘制损失点 =====================
+    const int dataCount = static_cast<int>(lossVector.size());
+    std::vector<int> dataXPositions; // 记录每个数据点的画布X坐标
+    for (int dataIdx = 0; dataIdx < dataCount; ++dataIdx) {
+        double normX = static_cast<double>(dataIdx) / (dataCount - 1);
+        int canvasX = static_cast<int>(normX * (plotWidth - 1) + 0.5);
+        dataXPositions.push_back(canvasX);
 
-        // Y轴映射（强制铺满高度）
-        double normY = (lossVector[dataIdx] - lossMin) / lossRange;
+        double normY = (lossVector[dataIdx].second - lossMin) / lossRange;
         int canvasY = static_cast<int>((1.0 - normY) * (plotHeight - 1) + 0.5);
-        canvasY = canvasY < 0 ? 0 : (canvasY >= plotHeight ? plotHeight - 1 : canvasY);
+        canvasY = std::max(0, std::min(canvasY, plotHeight - 1));
 
-        // 仅标记星号（删除竖线绘制逻辑）
         canvas[canvasY][canvasX] = '*';
     }
 
-   
+    // ===================== 5. 绘制画布 =====================
+    const int yLabelWidth = precision + 4;
     for (int y = 0; y < plotHeight; ++y) {
-        // 精简Y轴刻度：每10行显示一次，减少占列（仅占5列）
         if (y % 10 == 0 || y == plotHeight - 1) {
             double currentLoss = lossMax - (static_cast<double>(y) / (plotHeight - 1)) * lossRange;
-            std::cout << std::fixed << std::setprecision(precision) << std::setw(precision+4) << currentLoss << "|";
+            std::cout << std::fixed << std::setprecision(precision)
+                << std::setw(yLabelWidth) << currentLoss << "|";
         }
         else {
-            std::cout << std::string(precision+4,' ') << "|"; // 固定占位，仅5列
+            std::cout << std::string(yLabelWidth, ' ') << "|";
         }
 
-        // 绘制当前行的所有列（严格设定宽度）
         for (int x = 0; x < plotWidth; ++x) {
             if (canvas[y][x] == '*') {
                 std::cout << "\033[33m*\033[0m";
@@ -933,34 +953,29 @@ void NeuralNetwork::plotLossCurve(int width, int height, int precision) {
         std::cout << std::endl;
     }
 
-    // X轴分隔线（严格设定宽度）
-    std::cout << std::string(precision + 4, ' ') << "+" << std::string(plotWidth, '-') << std::endl;
+    // ===================== 6. 绘制X轴分隔线 =====================
+    std::cout << std::string(yLabelWidth, ' ') << "+" << std::string(plotWidth, '-') << std::endl;
 
-    // X轴刻度（强制铺满设定宽度）
-    std::cout << std::setw(precision + 4) << "Epoch ";
-    int tickStep = plotWidth / 10; // 按宽度均分10个刻度
-    for (int x = 0; x < plotWidth; ++x) {
-        // 修正条件：x是刻度间隔的倍数 或 x是绘图宽度最后一列
-        if (x % tickStep == 0 || x == plotWidth - 1) {
-            // 映射回原始迭代次数
-            double normX = static_cast<double>(x) / (plotWidth - 1);
-            //int iter = static_cast<int>(normX * (dataCount - 1) + 0.5);
-            int iter = static_cast<int>(normX * (dataCount - 1));
-            std::string tick = std::to_string(iter * epochs / 40);
-            
-            // 边界检查：避免刻度超出绘图宽度
-            if (x + tick.size() <= plotWidth) {
-                std::cout << tick;
-                x += tick.size() - 1; // 跳过已显示的字符位置
-            }
-            else {
-                // 最后一列空间不足时，只显示最后一位或简写
-                std::cout << std::to_string(epochs);
-            }
-        }
-        else {
-            std::cout << " ";
+    // ===================== 7. 绘制X轴刻度（根据实际epoch灵活显示） =====================
+    std::cout << std::setw(yLabelWidth) << "轮次  ";
+
+    int lastTickEnd = -1;
+    for (int dataIdx = 0; dataIdx < dataCount; ++dataIdx) {
+        int canvasX = dataXPositions[dataIdx];
+        int epoch = lossVector[dataIdx].first;
+        std::string tickStr = std::to_string(epoch);
+
+        if (canvasX >= lastTickEnd) {
+            std::cout << std::string(canvasX - (lastTickEnd == -1 ? 0 : lastTickEnd), ' ');
+            std::cout << tickStr;
+            lastTickEnd = canvasX + tickStr.size();
         }
     }
+
+    if (lastTickEnd < plotWidth) {
+        std::cout << std::string(plotWidth - lastTickEnd, ' ');
+    }
+
+    std::cout << "\n" << std::string(96, '=') << std::endl;
 }
 

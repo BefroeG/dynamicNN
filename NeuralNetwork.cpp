@@ -171,7 +171,6 @@ void NeuralNetwork::printNet() const {
         if(i != layers.size()-1)
             std::cout << std::string(110, '-') << std::endl << std::endl;
     }
-    //std::cout << std::string(102, '=') << std::endl << std::endl;
 }
 
 // 批归一化前向传播
@@ -180,9 +179,9 @@ Matrix NeuralNetwork::batchNormForward(const Matrix& z, Layer& layer) {
     int feat_size = z.getCols();
 
     if (!is_training) {
-        // 推理阶段：使用移动平均的均值和方差（修复核心）
+        // 推理阶段：使用移动平均的均值和方差
         Matrix mean_broadcast = layer.running_mean.broadcastRows(batch_size);
-        // 重新计算running_var的inv_std（关键修复）
+        // 重新计算running_var的inv_std
         Matrix std_running = layer.running_var.apply([this](double x) { return sqrt(x + EPS); });
         Matrix inv_std_running = std_running.apply([](double x) { return 1.0 / x; });
         Matrix inv_std_broadcast = inv_std_running.broadcastRows(batch_size);
@@ -260,7 +259,7 @@ Matrix NeuralNetwork::batchNormBackward(const Matrix& dz_norm, Layer& layer) {
     int batch_size = dz_norm.getRows();
     int feat_size = dz_norm.getCols();
 
-    // 1. 计算 γ 和 β 的梯度（标准化：除以 batch_size 提升稳定性）
+    // 1. 计算 γ 和 β 的梯度
     Matrix d_gamma(feat_size, 1, 0.0);
     Matrix d_beta(feat_size, 1, 0.0);
     for (int j = 0; j < feat_size; ++j) {
@@ -279,7 +278,7 @@ Matrix NeuralNetwork::batchNormBackward(const Matrix& dz_norm, Layer& layer) {
     Matrix gamma_broadcast = layer.gamma.transpose().broadcastRows(batch_size);
     Matrix dz_hat = dz_norm.hadamard(gamma_broadcast);
 
-    // 3. 计算原始 z 的梯度 dz（核心修复：移除多余的 gamma_j 乘法）
+    // 3. 计算原始 z 的梯度 dz
     Matrix dz(batch_size, feat_size, 0.0);
     for (int j = 0; j < feat_size; ++j) {
         double ivs = layer.inv_std(0, j); // 1/sqrt(var + EPS)
@@ -697,7 +696,6 @@ void NeuralNetwork::printTrainedNet() {
         if (i != layers.size() - 1)
             std::cout << std::string(110, '-') << std::endl << std::endl;
     }
-    //std::cout << std::string(102, '=') << std::endl << std::endl;
 }
 
 // 预测单值
@@ -836,7 +834,6 @@ void NeuralNetwork::plotFunction(bool ptrue, int width, int height) {
     }
 
     // 打印画布
-    //std::cout << "\n函数拟合可视化 (宽度=" << width << ", 高度=" << height << "):" << std::endl << std::endl;
     std::cout << std::string((width / 2 - 21 >= 1 ? (width / 2 - 21) : 1), ' ')
         << "\033[32m+ 真实数据点\033[0m   \033[31m* 预测数据点\033[0m   \033[33m# 重合数据点\033[0m"
         << std::endl << std::endl;

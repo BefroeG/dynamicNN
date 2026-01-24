@@ -2,7 +2,6 @@
 #define MATRIX_H
 
 #include <vector>
-#include <iostream>
 #include <functional>  // 之前添加的apply所需头文件
 
 class Matrix {

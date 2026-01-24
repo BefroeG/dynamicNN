@@ -11,18 +11,18 @@ int main() {
         double learning_rate = 0.001;
 
         // 请设置训练轮次（ 建议1000 - 100000 ）                                                      
-        size_t epochs = 5000;//训练轮次    
+        size_t epochs = 4000;//训练轮次    
 
         // 请设置神经网络【隐藏层】结构，无须设置【输入层】和【输出层】
         //【输出层】默认一个神经元，使用Linear作为激活函数
         //【隐藏层】使用ReLU作为激活函数
         //【隐藏层】可以设置0-3层，每层神经元数量为1-10个
         // 示例：表示【隐藏层】为3层 ，每层【隐藏层】的神经元个数分别为 8个，4个，1个
-        // std::vector<int> hidden_layer_sizes = { 8 , 4 , 1 };
+        // std::vector<int> hidden_layer_sizes = { 8 , 4 };
         std::vector<int> hidden_layers = { 8,4 };
 
         // 请将训练文件拷贝到本程序目录下，并设置训练文件名称                    
-        std::string file_name = "2X^3+X^2-3X+2";
+        std::string file_name = "polynomial_data.txt";
         //*********************  以下为系统内置训练文件 **********************/
         //file_name = "-2X+8";               // y = -2X+8       无噪声 
         //  (-3,14)(-2,12)(-1,10)(0,8)(1,6)(2,4)(3,2)
@@ -39,7 +39,6 @@ int main() {
         *                          参数配置完毕                             *
         *******************************************************************/
         // 1. 创建神经网络（仅指定学习率和优化器，批归一化由initLayers控制）
-
         NeuralNetwork nn(learning_rate, OptimizerType::ADAM);
 
         // 2. 加载数据（修改file_name更换数据文件）
@@ -49,25 +48,27 @@ int main() {
         nn.standardizeData();
 
         // 4. 初始化网络层（{隐藏层维度}, 批归一化开关：true/false）
-        nn.initLayers(hidden_layers, true);
+        nn.initLayers(hidden_layers, false);
 
-        // 网络预训练避免启动时过多神经元死亡
+        // 5. 网络预训练避免启动时过多神经元死亡
         nn.preTrain();
 
         // 打印网络结构（可选，用于验证配置）
         nn.printNet();
 
-        // 5. 训练网络（参数1：训练轮数，参数2：批次大小）
+        // 6. 训练网络（参数1：训练轮数，参数2：批次大小）
         nn.train(epochs, 125);
 
         // 打印训练后网络参数（可选）
         nn.printTrainedNet();
 
-        nn.plotLossCurve(); // 打印损失函数曲线
+        // 打印损失函数曲线（可选）
+        nn.plotLossCurve(); 
 
-        nn.plot_function(); // 可视化开关：取消注释启用拟合曲线绘制
+        // 可视化开关：取消注释启用拟合曲线绘制（可选）
+        nn.plotFunction(); 
 
-        // 6. 测试新数据
+        // 7. 测试新数据
         do {
             std::cout << "\n请输入x进行预测: ";
             double input_value;
@@ -82,33 +83,6 @@ int main() {
         } while (true);
 
         std::cout << "\n测试结束，程序退出！" << std::endl;
-
-        // ====================== 【备用配置示例】======================
-        // 以下为另一组配置示例，使用者可按需启用/修改
-        // ==========================================================
-        // 1. 创建神经网络（学习率0.01，默认BGD优化器）
-        // NeuralNetwork nn(0.01);
-
-        // 2. 加载数据（使用自定义数据文件）
-        // nn.loadData("X^2");
-
-        // 3. 标准化数据（固定流程）
-        // nn.standardizeData();
-
-        // 4. 初始化网络层（隐藏层{8,4}，禁用批归一化）
-        // nn.initLayers({8,4}, false);
-
-        // 5. 训练网络（50000轮，批次大小60）
-        // nn.train(50000, 60);
-
-        // 6. 预测示例（修改test_x值测试不同输入的预测结果）
-        // double test_x = 5.0;
-        // double pred_y = nn.predict(test_x);
-        // std::cout << "输入x=" << test_x << "，预测y=" << pred_y << std::endl;
-
-        // test_x = 7.5;
-        // pred_y = nn.predict(test_x);
-        // std::cout << "输入x=" << test_x << "，预测y=" << pred_y << std::endl;
 
     }
     catch (const std::exception& e) {

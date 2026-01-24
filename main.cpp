@@ -5,20 +5,20 @@
 int main() {
     try {
         /******************************************************************
-        *                            请配置参数                            *
+        *                            请配置参数                           *
         ******************************************************************/
-        // 请设置学习率 （ 建议0.001 - 0.1 ）                                  
-        double learning_rate = 0.01;
+        // 请设置学习率 （ 建议0.001 - 0.01 ）                                  
+        double learning_rate = 0.001;
 
-        // 请设置训练轮次（ 建议1000 - 100000 ）                                                      
-        size_t epochs = 100;//训练轮次    
+        // 请设置训练轮次（ 建议500 - 5000 ）                                                      
+        size_t epochs = 500;//训练轮次    
 
         // 请设置神经网络【隐藏层】结构，无须设置【输入层】和【输出层】
         //【输出层】默认一个神经元，使用Linear作为激活函数
         //【隐藏层】使用ReLU作为激活函数
         //【隐藏层】可以设置0-3层，每层神经元数量为1-10个
-        // 示例：表示【隐藏层】为3层 ，每层【隐藏层】的神经元个数分别为 8个，4个，1个
-        // std::vector<int> hidden_layer_sizes = { 8 , 4 , 1 };
+        // 示例：表示【隐藏层】为2层 ，每层【隐藏层】的神经元个数分别为 8个，4个
+        // std::vector<int> hidden_layer_sizes = { 8 , 4 };
         std::vector<int> hidden_layers = { 8,4 };
 
         // 请将训练文件拷贝到本程序目录下，并设置训练文件名称                    
@@ -36,67 +36,53 @@ int main() {
         //file_name = "2X^3+X^2-3X+2";     // y = 2X^3+X^2-3X+2 无噪声                                                       
         //  (-3,-34)(-2,-4)(-1,4)(0,2)(1,3)(2,16)(3,56)
         /******************************************************************
-        *                          参数配置完毕                             *
+        *                          参数配置完毕                           *
         *******************************************************************/
         // 1. 创建神经网络（仅指定学习率和优化器，批归一化由initLayers控制）
-        int i = 1;
-        while (true) {
-            std::cout << std::string(50, '<') << i++ << std::string(50, '>') << std::endl;
-            NeuralNetwork nn(learning_rate, OptimizerType::ADAM);
+        NeuralNetwork nn(learning_rate, OptimizerType::ADAM);
 
-            // 2. 加载数据（修改file_name更换数据文件）
-            nn.loadData(file_name);
+        // 2. 加载数据（修改file_name更换数据文件）
+        nn.loadData(file_name);
 
-            // 3. 标准化数据（固定流程，无需修改）
-            nn.standardizeData();
+        // 3. 标准化数据（固定流程，无需修改）
+        nn.standardizeData();
 
-            // 4. 初始化网络层（{隐藏层维度}, 批归一化开关：true/false）
-            nn.initLayers(hidden_layers, false);
+        // 4. 初始化网络层（{隐藏层维度}, 批归一化开关：true/false）
+        nn.initLayers(hidden_layers, false);
 
-            // 网络预训练避免启动时过多神经元死亡
-            nn.preTrain();
+        // 5. 网络预训练避免启动时过多神经元死亡
+        nn.preTrain();
 
-            // 打印网络结构（可选，用于验证配置）
-            nn.printNet();
+        // 打印网络结构（可选，用于验证配置）
+        nn.printNet();
 
-            // 5. 训练网络（参数1：训练轮数，参数2：批次大小）
-            nn.train(epochs, 125, 0.0001);
+        // 6. 训练网络（参数1：训练轮数，参数2：批次大小, 参数3：早停阈值）
+        nn.train(epochs, 125, 0.0006);
 
-            // 打印训练后网络参数（可选）
-            nn.printTrainedNet();
+        // 打印训练后网络参数（可选）
+        nn.printTrainedNet();
 
-            nn.plotLossCurve(); // 打印损失函数曲线
+        // 打印损失函数曲线（可选）
+        nn.plotLossCurve();
 
-            nn.plotFunction(); // 可视化开关：取消注释启用拟合曲线绘制
-            
-        }
+        // 可视化开关：取消注释启用拟合曲线绘制（可选）
+        nn.plotFunction();
 
-        // ====================== 【备用配置示例】======================
-        // 以下为另一组配置示例，使用者可按需启用/修改
-        // ==========================================================
-        // 1. 创建神经网络（学习率0.01，默认BGD优化器）
-        // NeuralNetwork nn(0.01);
+        // 7. 测试新数据
+        do {
+            std::cout << "\n请输入x进行预测: ";
+            double input_value;
+            std::cin >> input_value;
+            double pred_value = nn.predict(input_value);
+            std::cout << "预测值是: " << pred_value << std::endl;
+            std::cout << "请输出对应的真实值进行对比: ";
+            double true_value;
+            std::cin >> true_value;
+            double loss = (true_value - pred_value) * (true_value - pred_value);
+            std::cout << "MSE误差是: " << std::fixed << std::setprecision(6) << loss << std::endl;
+        } while (true);
 
-        // 2. 加载数据（使用自定义数据文件）
-        // nn.loadData("X^2");
-
-        // 3. 标准化数据（固定流程）
-        // nn.standardizeData();
-
-        // 4. 初始化网络层（隐藏层{8,4}，禁用批归一化）
-        // nn.initLayers({8,4}, false);
-
-        // 5. 训练网络（50000轮，批次大小60）
-        // nn.train(50000, 60);
-
-        // 6. 预测示例（修改test_x值测试不同输入的预测结果）
-        // double test_x = 5.0;
-        // double pred_y = nn.predict(test_x);
-        // std::cout << "输入x=" << test_x << "，预测y=" << pred_y << std::endl;
-
-        // test_x = 7.5;
-        // pred_y = nn.predict(test_x);
-        // std::cout << "输入x=" << test_x << "，预测y=" << pred_y << std::endl;
+        std::cout << "\n测试结束，程序退出！" << std::endl;
 
     }
     catch (const std::exception& e) {

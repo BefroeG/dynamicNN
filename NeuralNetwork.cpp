@@ -972,7 +972,5 @@ void NeuralNetwork::plotLossCurve(int width, int height, int precision) {
     if (lastTickEnd < plotWidth) {
         std::cout << std::string(plotWidth - lastTickEnd, ' ');
     }
-
-    std::cout << "\n" << std::string(96, '=') << std::endl;
 }
 

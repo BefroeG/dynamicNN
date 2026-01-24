@@ -212,7 +212,7 @@ public:
     void plotFunction(bool ptrue = true, int width = 110, int height = 50);
 
     // 在坐标图中打印预测点和真实数据点
-    void plotLossCurve(int width = 100, int height = 50, int precision = 6);
+    void plotLossCurve(int width = 101, int height = 50, int precision = 6);
 };
 
 #endif // NEURALNETWORK_H

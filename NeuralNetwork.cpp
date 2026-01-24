@@ -116,7 +116,12 @@ void NeuralNetwork::initLayers(const std::vector<int>& hidden_layers, bool use_b
         }
         // 偏置初始化为小正数（避免ReLU初始死亡）
         for (int i = 0; i < b.getRows(); ++i) {
-            b(i, 0) = b_dist(gen);
+            if (use_bn) {
+                b(i, 0) = 0.0;
+            } 
+            else {
+                b(i, 0) = b_dist(gen);
+            }
         }
         // 创建隐藏层（ReLU激活，批归一化由参数控制）
         layers.emplace_back(w, b, ActivationType::RELU, use_bn);
@@ -140,7 +145,7 @@ void NeuralNetwork::initLayers(const std::vector<int>& hidden_layers, bool use_b
 
 // 打印网络结构
 void NeuralNetwork::printNet() const {
-    std::cout << std::string(46, '=') << " 网络结构 " << std::string(46, '=') << std::endl << std::endl;
+    std::cout << std::string(50, '=') << " 网络结构 " << std::string(50, '=') << std::endl << std::endl;
     int input_dim = 1;
     std::cout << std::fixed << std::right;
     for (size_t i = 0; i < layers.size(); ++i) {
@@ -158,17 +163,15 @@ void NeuralNetwork::printNet() const {
         // 打印层参数
         std::cout << "\nweight:\n";layer.weight.print();std::cout << std::endl;
         if(input_dim == 1) std::cout << std::endl;
-        if (!layer.use_batch_norm) {
-            std::cout << "bias: [ ";layer.bias.transpose().print();std::cout << " ]\n";
-        }
-        else {
+        std::cout << "bias:  [ ";layer.bias.transpose().print();std::cout << " ]\n";
+        if (layer.use_batch_norm) {
             std::cout << "gamma: [ ";layer.gamma.transpose().print();std::cout << " ]\n";
             std::cout << "beta:  [ ";layer.beta.transpose().print();std::cout << " ]\n";
         }
         if(i != layers.size()-1)
-            std::cout << std::string(102, '-') << std::endl << std::endl;
+            std::cout << std::string(110, '-') << std::endl << std::endl;
     }
-    std::cout << std::string(102, '=') << std::endl << std::endl;
+    //std::cout << std::string(102, '=') << std::endl << std::endl;
 }
 
 // 批归一化前向传播
@@ -252,6 +255,7 @@ Matrix NeuralNetwork::forward(const Matrix& epoch_input, bool pre_train) {
     return current;
 }
 
+// 批归一化反向传播
 Matrix NeuralNetwork::batchNormBackward(const Matrix& dz_norm, Layer& layer) {
     int batch_size = dz_norm.getRows();
     int feat_size = dz_norm.getCols();
@@ -499,7 +503,12 @@ void NeuralNetwork::preTrain() {
                 }
                 // 偏置初始化为小正数（避免ReLU初始死亡）
                 for (int i = 0; i < layer.bias.getRows(); ++i) {
-                    layer.bias(i, 0) = b_dist(gen);
+                    if (layer.use_batch_norm) {
+                        layer.bias(i, 0) = 0.0;
+                    }
+                    else {
+                        layer.bias(i, 0) = b_dist(gen);
+                    }
                 }
                 input_dim = layer.weight.getRows();
             }
@@ -579,15 +588,15 @@ void NeuralNetwork::train(size_t epochs, size_t batch_size) {
         // 计算平均损失和更新参数
         final_delta = epoch_loss / static_cast<double>(n_samples);
 
-        if (epoch % 25 == 0 || epoch == epochs - 1)
+        if (epoch % (epochs / 40) == 0 || epoch == epochs - 1)
             lossVector.push_back(final_delta);//记录每轮的损失
 
         // 打印训练信息
-        if (epoch % 500 == 0 || epoch == epochs - 1) {
+        if (epoch % (epochs / 10) == 0 || epoch == epochs - 1) {
             std::cout << "Epoch " << epoch << "，均方误差= " << std::fixed << std::setprecision(6) << final_delta
                 << "，(学习率= " << current_lr << ")" << std::endl;
         }
-        if (epoch % 100 == 0) {
+        if (epoch % (epochs / 20) == 0) {
             checkNeuronDeath(8.0);
         }
     }
@@ -613,7 +622,7 @@ void NeuralNetwork::recordOriginalParameters() {
 
 // 打印最终参数比对
 void NeuralNetwork::printTrainedNet() {
-    std::cout << std::string(42, '=') << " 训练结束网络结构 " << std::string(42, '=') << std::endl << std::endl;
+    std::cout << std::string(46, '=') << " 完成训练网络结构 " << std::string(46, '=') << std::endl << std::endl;
     int input_dim = 1;
     for (size_t i = 0; i < layers.size(); ++i) {
         const Layer& layer = layers[i];
@@ -634,8 +643,8 @@ void NeuralNetwork::printTrainedNet() {
         for (int i = 0; i < w.getRows(); ++i) {
             for (int j = 0; j < w.getCols(); ++j) {
                 std::cout << std::setw(10) << std::setprecision(6) << w(i,j)
-                    << " (" << std::setw(5) << std::setprecision(2)
-                    << (w(i, j) - _w(i, j))/(_w(i, j)+EPS) << "%)";
+                    << "(" << std::setw(8) << std::setprecision(1)
+                    << ((_w(i, j) == 0.0) ? w(i, j) : ((w(i, j) - _w(i, j)) / _w(i, j))) * 100 << "%)";
                 if (j != w.getCols() - 1) {
                     std::cout << " | ";
                 }
@@ -646,53 +655,48 @@ void NeuralNetwork::printTrainedNet() {
         }
         if(w.getRows() == 1) std::cout << std::endl;
        
-        if (!layer.use_batch_norm) {
-            std::cout << "\nbias: [ ";
-            Matrix b = layer.bias.transpose();
-            Matrix _b = layer._bias.transpose();
-            for (int i = 0; i < b.getCols(); ++i) {
-                 std::cout << std::setw(10) << std::setprecision(6) << b(0, i)
-                     << " (" << std::setw(5) << std::setprecision(2)
-                      << (b(0, i) - _b(0, i)) / (_b(0, i) + EPS) << "%)";
-                if (i != b.getCols() - 1) {
-                    std::cout << " | ";
-                }
+        std::cout << "\nbias:  [ ";
+        Matrix bs = layer.bias.transpose();
+        Matrix _bs = layer._bias.transpose();
+        for (int i = 0; i < bs.getCols(); ++i) {
+                std::cout << std::setw(10) << std::setprecision(6) << bs(0, i)
+                    << "(" << std::setw(8) << std::setprecision(1)
+                    << ((_bs(0, i) == 0.0) ? bs(0, i) : ((bs(0, i) - _bs(0, i)) / _bs(0, i))) * 100 << "%)";
+            if (i != bs.getCols() - 1) {
+                std::cout << " | ";
             }
-            std::cout << " ]\n";
-
         }
-        else {
+        std::cout << " ]\n";
+        if (layer.use_batch_norm) {
             std::cout << "gamma: [ ";
             Matrix g = layer.gamma.transpose();
             Matrix _g = layer._gamma.transpose();
             for (int i = 0; i < g.getCols(); ++i) {
                 std::cout << std::setw(10) << std::setprecision(6) << g(0, i)
-                    << " (" << std::setw(5) << std::setprecision(2)
-                    << (g(0, i) - _g(0, i)) / (_g(0, i) + EPS) << "%)";
+                    << "(" << std::setw(8) << std::setprecision(1)
+                    <<((_g(0, i)==0.0) ? g(0, i):((g(0, i) - _g(0, i)) / _g(0, i))) * 100<< "%)";
                 if (i != g.getCols() - 1) {
                     std::cout << " | ";
                 }
             }
-            std::cout << " ]\n";
-
-            std::cout << "beta:  [ ";
-            Matrix b = layer.beta.transpose();
-            Matrix _b = layer._beta.transpose();
-            for (int i = 0; i < b.getCols(); ++i) {
-                std::cout << std::setw(10) << std::setprecision(6) << b(0, i)
-                    << " (" << std::setw(5) << std::setprecision(2)
-                    << (b(0, i) - _b(0, i)) / (_b(0, i)+EPS) << "%)";
-                if (i != b.getCols() - 1) {
+            std::cout << " ]\nbeta:  [ ";
+            Matrix ba = layer.beta.transpose();
+            Matrix _ba = layer._beta.transpose();
+            for (int i = 0; i < ba.getCols(); ++i) {
+                std::cout << std::setw(10) << std::setprecision(6) << ba(0, i)
+                    << "(" << std::setw(8) << std::setprecision(1)
+                    << ((_ba(0, i) == 0.0) ? ba(0, i) : ((ba(0, i) - _ba(0, i)) / _ba(0, i))) * 100 << "%)";
+                if (i != ba.getCols() - 1) {
                     std::cout << " | ";
                 }
             }
             std::cout << " ]\n";
-
         }
+
         if (i != layers.size() - 1)
-            std::cout << std::string(102, '-') << std::endl << std::endl;
+            std::cout << std::string(110, '-') << std::endl << std::endl;
     }
-    std::cout << std::string(102, '=') << std::endl << std::endl;
+    //std::cout << std::string(102, '=') << std::endl << std::endl;
 }
 
 // 预测单值
@@ -735,8 +739,8 @@ bool NeuralNetwork::checkNeuronDeath(double death_ratio) {
 }
 
 // 控制台可视化拟合结果
-void NeuralNetwork::plot_function(bool isPlotTarget, int width, int height) {
-    std::cout << std::endl << std::string(45, '=') << " 函数拟合曲线 " << std::string(45, '=') << std::endl << std::endl;
+void NeuralNetwork::plotFunction(bool ptrue, int width, int height) {
+    std::cout << std::endl << std::endl << std::string(49, '=') << " 函数拟合曲线 " << std::string(49, '=') << std::endl << std::endl;
     is_training = false;
     size_t size = true_points.size();
     Matrix pred_output = forward(norm_input);
@@ -766,10 +770,10 @@ void NeuralNetwork::plot_function(bool isPlotTarget, int width, int height) {
     // 扩展范围
     double x_range = x_max - x_min;
     double y_range = y_max - y_min;
-    x_min -= 0.05 * x_range;
-    x_max += 0.05 * x_range;
-    y_min -= 0.05 * y_range;
-    y_max += 0.05 * y_range;
+    x_min -= 0.0 * x_range;
+    x_max += 0.0 * x_range;
+    y_min -= 0.0 * y_range;
+    y_max += 0.0 * y_range;
 
     // 创建画布
     std::vector<std::vector<char>> canvas(height, std::vector<char>(width, ' '));
@@ -814,7 +818,7 @@ void NeuralNetwork::plot_function(bool isPlotTarget, int width, int height) {
     }
 
     // 绘制真实数据点
-    if (isPlotTarget) {
+    if (ptrue) {
         for (const auto& p : true_points) {
             int col = static_cast<int>((p.first - x_min) / (x_max - x_min) * (width - 1));
             int row = static_cast<int>((y_max - p.second) / (y_max - y_min) * (height - 1));
@@ -831,7 +835,7 @@ void NeuralNetwork::plot_function(bool isPlotTarget, int width, int height) {
     }
 
     // 打印画布
-    std::cout << "\n函数拟合可视化 (宽度=" << width << ", 高度=" << height << "):" << std::endl << std::endl;
+    //std::cout << "\n函数拟合可视化 (宽度=" << width << ", 高度=" << height << "):" << std::endl << std::endl;
     std::cout << std::string((width / 2 - 21 >= 1 ? (width / 2 - 21) : 1), ' ')
         << "\033[32m+ 真实数据点\033[0m   \033[31m* 预测数据点\033[0m   \033[33m# 重合数据点\033[0m"
         << std::endl << std::endl;
@@ -855,92 +859,106 @@ void NeuralNetwork::plot_function(bool isPlotTarget, int width, int height) {
         }
         std::cout << std::endl;
     }
-
-    std::cout << "X范围: [" << x_min << ", " << x_max << "]" << std::endl;
-    std::cout << "Y范围: [" << y_min << ", " << y_max << "]" << std::endl;
+    std::cout << std::endl << std::endl;
+    std::cout << "X范围: [" << x_min << ", " << x_max << "]  Y范围: [" << y_min << ", " << y_max << "]" << std::endl << std::endl;
 }
 
-// 绘制损失函数控制台图像的函数
-void NeuralNetwork::plotLossCurve(int plotHeight, int precision) {
-    // 1. 边界情况处理
+// 控制台可视化损失函数曲线
+void NeuralNetwork::plotLossCurve(int width, int height, int precision) {
+    // 1. 严格参数校验（强制修正为设定值，比如100x100）
     if (lossVector.empty()) {
-        std::cout << "错误：损失值vector为空，无法绘制图像！" << std::endl;
+        std::cout << "错误：损失值vector为空！" << std::endl;
         return;
     }
-    if (lossVector.size() == 1) {
-        std::cout << "损失值vector仅包含1个元素：" << lossVector[0] << std::endl;
+    if (lossVector.size() < 2) {
+        std::cout << "错误：损失值数量少于2！" << std::endl;
         return;
     }
+    // 5. 绘制画布（精简Y轴刻度，减少占列）
+    std::cout << std::endl << std::string(48, '=') << " 损失函数曲线 " << std::string(48, '=') << std::endl << std::endl;
+    const int plotWidth = std::max(1, width);   // 强制宽度=传入值
+    const int plotHeight = std::max(1, height); // 强制高度=传入值
 
-    // 2. 获取损失值的最大值和最小值（兼容C++11/14）
-    std::pair<std::vector<double>::const_iterator, std::vector<double>::const_iterator> lossMinMax =
-        std::minmax_element(lossVector.begin(), lossVector.end());
-    double lossMin = *lossMinMax.first;
-    double lossMax = *lossMinMax.second;
+    // 2. 计算损失值极值
+    double lossMin = *std::min_element(lossVector.begin(), lossVector.end());
+    double lossMax = *std::max_element(lossVector.begin(), lossVector.end());
     double lossRange = lossMax - lossMin;
-
-    // 处理所有损失值相同的情况（避免除以0）
-    if (lossRange < 1e-9) {
-        lossRange = 1.0;
+    if (fabs(lossRange) < 1e-12) {
         lossMin -= 0.5;
         lossMax += 0.5;
+        lossRange = 1.0;
     }
 
-    // 3. 定义图像宽度（列数 = 损失值数量）
-    int plotWidth = static_cast<int>(lossVector.size());
+    // 3. 初始化画布（严格尺寸）
+    std::vector<std::vector<char>> canvas(plotHeight, std::vector<char>(plotWidth, ' '));
 
-    // 4. 绘制图像主体（逐行绘制）
-    std::cout << std::string(42, '=') << " 损失函数变化曲线 " << std::string(42, '=') << std::endl << std::endl;
-    for (int row = 0; row < plotHeight; ++row) {
-        // 计算当前行对应的损失值
-        double currentValue = lossMax - (static_cast<double>(row) / (plotHeight - 1)) * lossRange;
+    // 4. 强制X轴铺满宽度（仅保留星号，删除竖线绘制）
+    int dataCount = static_cast<int>(lossVector.size());
+    for (int canvasX = 0; canvasX < plotWidth; ++canvasX) { // 遍历画布每一列（0~99）
+        // 反向映射：画布列 → 原始数据索引（强制铺满）
+        double normX = static_cast<double>(canvasX) / (plotWidth - 1); // 0~1
+        int dataIdx = static_cast<int>(normX * (dataCount - 1) + 0.5);
+        dataIdx = dataIdx < 0 ? 0 : (dataIdx >= dataCount ? dataCount - 1 : dataIdx);
 
-        // 输出左侧数值刻度（右对齐，固定宽度，统一8位）
-        std::cout << std::fixed << std::setprecision(precision) << std::setw(8) << currentValue << " | ";
+        // Y轴映射（强制铺满高度）
+        double normY = (lossVector[dataIdx] - lossMin) / lossRange;
+        int canvasY = static_cast<int>((1.0 - normY) * (plotHeight - 1) + 0.5);
+        canvasY = canvasY < 0 ? 0 : (canvasY >= plotHeight ? plotHeight - 1 : canvasY);
 
-        // 逐列绘制损失值标记
-        for (int col = 0; col < plotWidth; ++col) {
-            int mappedRow = static_cast<int>((lossMax - lossVector[col]) / lossRange * (plotHeight - 1));
-            // 允许1行的误差（避免浮点精度导致标记消失）
-            if (abs(mappedRow - row) <= 0) {
-                std::cout << "\033[33m*\033[0m";//"\033[33m#\033[0m"
+        // 仅标记星号（删除竖线绘制逻辑）
+        canvas[canvasY][canvasX] = '*';
+    }
+
+   
+    for (int y = 0; y < plotHeight; ++y) {
+        // 精简Y轴刻度：每10行显示一次，减少占列（仅占5列）
+        if (y % 10 == 0 || y == plotHeight - 1) {
+            double currentLoss = lossMax - (static_cast<double>(y) / (plotHeight - 1)) * lossRange;
+            std::cout << std::fixed << std::setprecision(precision) << std::setw(precision+4) << currentLoss << "|";
+        }
+        else {
+            std::cout << std::string(precision+4,' ') << "|"; // 固定占位，仅5列
+        }
+
+        // 绘制当前行的所有列（严格设定宽度）
+        for (int x = 0; x < plotWidth; ++x) {
+            if (canvas[y][x] == '*') {
+                std::cout << "\033[33m*\033[0m";
             }
             else {
-                std::cout << " ";
+                std::cout << canvas[y][x];
             }
         }
         std::cout << std::endl;
     }
 
-    // 5. 绘制底部分隔线（长度严格匹配图像主体宽度）
-    std::cout << "          +" << std::string(plotWidth, '-') << std::endl;
+    // X轴分隔线（严格设定宽度）
+    std::cout << std::string(precision + 4, ' ') << "+" << std::string(plotWidth, '-') << std::endl;
 
-    // 6. 绘制迭代次数刻度（优化对齐，避免“差一块”）
-    std::cout << "迭代次数： ";
-    // 重新计算刻度步长，确保刻度均匀且不重叠
-    int maxTickNum = 10;  // 最多显示10个刻度
-    int tickStep = std::max(1, plotWidth / maxTickNum);
+    // X轴刻度（强制铺满设定宽度）
+    std::cout << std::setw(precision + 4) << "Epoch ";
+    int tickStep = plotWidth / 10; // 按宽度均分10个刻度
+    for (int x = 0; x < plotWidth; ++x) {
+        // 修正条件：x是刻度间隔的倍数 或 x是绘图宽度最后一列
+        if (x % tickStep == 0 || x == plotWidth - 1) {
+            // 映射回原始迭代次数
+            double normX = static_cast<double>(x) / (plotWidth - 1);
+            int iter = static_cast<int>(normX * (dataCount - 1) + 0.5);
+            std::string tick = std::to_string(iter);
 
-    // 先初始化刻度行的所有字符为空格
-    std::string tickLine(plotWidth, ' ');
-    for (int col = 0; col < plotWidth; col += tickStep) {
-        // 把迭代次数转为字符串，填充到刻度行
-        std::string tickStr = std::to_string(col * 25);
-        // 确保刻度不超出图像宽度
-        if (col + tickStr.size() <= plotWidth) {
-            for (int i = 0; i < tickStr.size(); ++i) {
-                tickLine[col + i] = tickStr[i];
+            // 边界检查：避免刻度超出绘图宽度
+            if (x + tick.size() <= plotWidth) {
+                std::cout << tick;
+                x += tick.size() - 1; // 跳过已显示的字符位置
+            }
+            else {
+                // 最后一列空间不足时，只显示最后一位或简写
+                std::cout << tick;
             }
         }
         else {
-            // 最后一个刻度如果超出，只显示最后几位
-            int start = plotWidth - tickStr.size();
-            start = std::max(start, 0);
-            for (int i = 0; i < tickStr.size() && start + i < plotWidth; ++i) {
-                tickLine[start + i] = tickStr[i];
-            }
+            std::cout << " ";
         }
     }
-    // 输出刻度行
-    std::cout << tickLine << std::endl;
 }
+

@@ -207,10 +207,10 @@ public:
     bool checkNeuronDeath(double death_ratio = 0.6);
 
     // 控制台可视化拟合结果
-    void plot_function(bool ptrue = true, int width = 100, int height = 80);
+    void plotFunction(bool ptrue = true, int width = 110, int height = 50);
 
     // 在坐标图中打印预测点和真实数据点
-    void plotLossCurve(int plotHeight = 50, int precision = 4);
+    void plotLossCurve(int width = 100, int height = 50, int precision = 6);
 };
 
 #endif // NEURALNETWORK_H

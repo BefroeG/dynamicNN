@@ -112,6 +112,7 @@ struct Layer {
 // 神经网络类（单变量回归任务）
 class NeuralNetwork {
 private:
+    int epochs;                 // 训练轮次数
     double lr;                  // 初始学习率
     double current_lr;          // 当前学习率（支持衰减）
     bool is_training;           // 是否为训练模式

@@ -518,7 +518,7 @@ void NeuralNetwork::preTrain() {
 }
 
 // 训练网络
-void NeuralNetwork::train(size_t epochs, size_t batch_size) {
+void NeuralNetwork::train(size_t _epochs, size_t batch_size) {
     if (norm_input.getRows() == 0 || norm_target.getRows() == 0) {
         throw std::runtime_error("请先加载并标准化数据");
     }
@@ -529,6 +529,7 @@ void NeuralNetwork::train(size_t epochs, size_t batch_size) {
         throw std::runtime_error("批次大小无效（需大于0且不超过数据总量）");
     }
     is_training = true;
+    epochs = _epochs;
     recordOriginalParameters();//记录原始参数
     // 记录开始时间
     auto start = std::chrono::high_resolution_clock::now();
@@ -943,9 +944,10 @@ void NeuralNetwork::plotLossCurve(int width, int height, int precision) {
         if (x % tickStep == 0 || x == plotWidth - 1) {
             // 映射回原始迭代次数
             double normX = static_cast<double>(x) / (plotWidth - 1);
-            int iter = static_cast<int>(normX * (dataCount - 1) + 0.5);
-            std::string tick = std::to_string(iter);
-
+            //int iter = static_cast<int>(normX * (dataCount - 1) + 0.5);
+            int iter = static_cast<int>(normX * (dataCount - 1));
+            std::string tick = std::to_string(iter * epochs / 40);
+            
             // 边界检查：避免刻度超出绘图宽度
             if (x + tick.size() <= plotWidth) {
                 std::cout << tick;
@@ -953,7 +955,7 @@ void NeuralNetwork::plotLossCurve(int width, int height, int precision) {
             }
             else {
                 // 最后一列空间不足时，只显示最后一位或简写
-                std::cout << tick;
+                std::cout << std::to_string(epochs);
             }
         }
         else {
